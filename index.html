@@ -153,9 +153,7 @@
   .coin-symbol.eth { color: var(--eth); }
   .coin-symbol.bsv { color: var(--bsv); }
   .coin-name { font-size: 11px; color: var(--text-muted); }
-  .price-right {
-    display: flex; align-items: center; gap: 8px;
-  }
+  .price-right { display: flex; align-items: center; gap: 8px; }
   .price { font-size: 16px; font-weight: 500; font-variant-numeric: tabular-nums; }
   .price-chevron { color: var(--text-faint); font-size: 14px; }
 
@@ -222,6 +220,19 @@
     box-shadow: 0 2px 6px var(--tooltip-shadow);
   }
   .chart-loading-older[hidden] { display: none !important; }
+  .zoom-badge {
+    position: absolute; top: 6px; right: 6px;
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 10.5px; color: var(--text-muted);
+    z-index: 4; pointer-events: none;
+    box-shadow: 0 2px 6px var(--tooltip-shadow);
+    font-variant-numeric: tabular-nums;
+    opacity: 0; transition: opacity 0.2s;
+  }
+  .zoom-badge.visible { opacity: 1; }
   .chart-tooltip {
     position: absolute; top: 6px;
     padding: 6px 10px;
@@ -380,6 +391,7 @@
       </svg>
       <div class="chart-loading" id="chart-loading">차트 불러오는 중…</div>
       <div class="chart-loading-older" id="chart-loading-older" hidden>이전 데이터 로딩…</div>
+      <div class="zoom-badge" id="zoom-badge">30일</div>
       <div class="chart-tooltip" id="tooltip" hidden>
         <div class="tt-date" id="tt-date"></div>
         <div class="tt-value" id="tt-value"></div>
@@ -408,7 +420,7 @@
   </div>
 
   <div class="updated" id="updated"></div>
-  <div class="footer">데이터 출처: CryptoCompare · 좌우 드래그로 과거 데이터 자동 로딩</div>
+  <div class="footer">데이터 출처: CryptoCompare · 두 손가락으로 줌인/줌아웃 (최대 1년)</div>
 </div>
 
 <script>
@@ -452,40 +464,32 @@ dbg('Script loaded.');
   // ===================================================================
   var CC_BASE = 'https://min-api.cryptocompare.com/data';
   var REFRESH_INTERVAL_MS = 60 * 1000;
-  var WINDOW_SIZE = 720;        // 720 hourly points = 30 days visible
-  var FETCH_OLDER_LIMIT = 720;  // fetch 30 more days when panning back
-  var PREFETCH_THRESHOLD = 80;  // when windowStart < this, prefetch older
+  var WINDOW_SIZE       = 720;    // default visible = 720 hourly points (30 days)
+  var MIN_WINDOW        = 12;     // 12 hours minimum zoom-in
+  var MAX_WINDOW        = 8760;   // 1 year (365*24) maximum zoom-out
+  var FETCH_OLDER_LIMIT = 2000;   // CryptoCompare max per call
+  var PREFETCH_THRESHOLD= 80;
+  var MAX_RENDER_POINTS = 800;    // subsample for rendering when zoomed out
 
-  // Coin colors
   var COLORS = {
     ratio: '#0a84ff',
     eth:   '#627eea',
     bsv:   '#eab300',
-  };
-  var COLOR_FILLS = {
-    ratio: 'rgba(10, 132, 255, 0.22)',
-    eth:   'rgba(98, 126, 234, 0.22)',
-    bsv:   'rgba(234, 179, 0, 0.22)',
   };
 
   // ===================================================================
   // State
   // ===================================================================
   var state = {
-    // Unified data array: { time, date, eth, bsv, ratio }
     data: [],
-    // Visible window into state.data
     windowStart: 0,
     windowEnd: 0,
-    // Pan accumulator (sub-pixel precision)
+    targetWindowSize: WINDOW_SIZE,
     panAccum: 0,
-    // Chart and interaction mode
-    chartType: 'ratio',   // 'ratio' | 'eth' | 'bsv'
-    mode: 'scrub',        // 'scrub' | 'pan'
-    // Loading state
+    chartType: 'ratio',
+    mode: 'scrub',
     isLoadingOlder: false,
     noMoreOlder: false,
-    // Last-known current prices
     currentEth: null,
     currentBsv: null,
     currentRatio: null,
@@ -494,6 +498,7 @@ dbg('Script loaded.');
   var chartGeom = null;
   var refreshTimer = null;
   var isFetchingCurrent = false;
+  var zoomBadgeTimer = null;
 
   // ===================================================================
   // Helpers
@@ -514,16 +519,30 @@ dbg('Script loaded.');
     if (n >= 10)  return n.toFixed(3);
     return n.toFixed(4);
   }
-  function fmtPct(n)   { return (n >= 0 ? '+' : '') + n.toFixed(2) + '%'; }
-  function formatDateShort(d) { return (d.getMonth() + 1) + '/' + d.getDate(); }
+  function fmtPct(n) { return (n >= 0 ? '+' : '') + n.toFixed(2) + '%'; }
+  function fmtDuration(hours) {
+    if (hours < 36) return Math.round(hours) + '시간';
+    var days = Math.round(hours / 24);
+    if (days <= 60) return days + '일';
+    var months = days / 30;
+    if (months < 12) return months.toFixed(months < 3 ? 1 : 0) + '개월';
+    var years = days / 365;
+    return years.toFixed(1) + '년';
+  }
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
   function formatDateFull(d) {
     var dow = ['일','월','화','수','목','금','토'][d.getDay()];
-    var y = d.getFullYear();
-    var m = d.getMonth() + 1;
-    var dd = d.getDate();
-    var h = String(d.getHours()).padStart(2, '0');
-    var mn = String(d.getMinutes()).padStart(2, '0');
-    return y + '. ' + m + '. ' + dd + ' (' + dow + ') ' + h + ':' + mn;
+    return d.getFullYear() + '. ' + (d.getMonth()+1) + '. ' + d.getDate() +
+           ' (' + dow + ') ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+  function formatXLabel(d, spanHours) {
+    if (spanHours <= 48) {
+      return (d.getMonth()+1) + '/' + d.getDate() + ' ' + pad2(d.getHours()) + '시';
+    }
+    if (spanHours >= 24 * 200) {  // ~ 6.5+ months → show year
+      return String(d.getFullYear()).slice(-2) + '/' + pad2(d.getMonth()+1);
+    }
+    return (d.getMonth()+1) + '/' + d.getDate();
   }
   function setStatus(text, kind) {
     var el = $('#status');
@@ -533,32 +552,56 @@ dbg('Script loaded.');
   }
 
   // ===================================================================
-  // Series accessors (based on chartType)
+  // Series accessors (chartType-aware)
   // ===================================================================
-  function getValueFor(point) {
-    if (state.chartType === 'ratio') return point.ratio;
-    if (state.chartType === 'eth')   return point.eth;
-    if (state.chartType === 'bsv')   return point.bsv;
-    return point.ratio;
+  function getValueFor(p) {
+    if (state.chartType === 'ratio') return p.ratio;
+    if (state.chartType === 'eth')   return p.eth;
+    if (state.chartType === 'bsv')   return p.bsv;
+    return p.ratio;
   }
-  function getCurrentForType() {
-    if (state.chartType === 'ratio') return state.currentRatio;
-    if (state.chartType === 'eth')   return state.currentEth;
-    if (state.chartType === 'bsv')   return state.currentBsv;
-    return null;
-  }
-  function getVisibleValues() {
-    var out = [];
-    for (var i = state.windowStart; i < state.windowEnd; i++) {
-      out.push({ date: state.data[i].date, value: getValueFor(state.data[i]) });
-    }
-    return out;
-  }
-  function fmtChartValue(v) {
+  function fmtChartAxis(v) {
     return state.chartType === 'ratio' ? fmtRatio(v) : fmtKRWAxis(v);
   }
-  function fmtChartValueFull(v) {
+  function fmtChartFull(v) {
     return state.chartType === 'ratio' ? fmtRatio(v) : fmtKRW(v);
+  }
+
+  // Subsampled data for rendering (caps at MAX_RENDER_POINTS)
+  function getRenderData() {
+    var len = state.windowEnd - state.windowStart;
+    if (len <= 0) return [];
+    if (len <= MAX_RENDER_POINTS) {
+      var out = new Array(len);
+      for (var i = 0; i < len; i++) {
+        var p = state.data[state.windowStart + i];
+        out[i] = { date: p.date, value: getValueFor(p), dataIdx: state.windowStart + i };
+      }
+      return out;
+    }
+    var out2 = new Array(MAX_RENDER_POINTS);
+    var step = (len - 1) / (MAX_RENDER_POINTS - 1);
+    for (var k = 0; k < MAX_RENDER_POINTS; k++) {
+      var idx = state.windowStart + Math.round(k * step);
+      if (idx >= state.windowEnd) idx = state.windowEnd - 1;
+      var pt = state.data[idx];
+      out2[k] = { date: pt.date, value: getValueFor(pt), dataIdx: idx };
+    }
+    return out2;
+  }
+
+  // Full visible (for stats — no subsampling)
+  function visibleStats() {
+    var n = state.windowEnd - state.windowStart;
+    if (n <= 0) return { min: null, max: null, avg: null };
+    var mn = Infinity, mx = -Infinity, sum = 0;
+    for (var i = state.windowStart; i < state.windowEnd; i++) {
+      var v = getValueFor(state.data[i]);
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+      sum += v;
+    }
+    return { min: mn, max: mx, avg: sum / n };
   }
 
   // ===================================================================
@@ -576,7 +619,6 @@ dbg('Script loaded.');
     });
   }
 
-  // Build aligned data from ETH and BSV histohour responses
   function alignSeries(ethArr, bsvArr) {
     var bsvMap = {};
     for (var i = 0; i < bsvArr.length; i++) {
@@ -591,8 +633,7 @@ dbg('Script loaded.');
       out.push({
         time: e.time,
         date: new Date(e.time * 1000),
-        eth: e.close,
-        bsv: b,
+        eth: e.close, bsv: b,
         ratio: e.close / b,
       });
     }
@@ -634,6 +675,7 @@ dbg('Script loaded.');
       state.data = aligned;
       state.windowEnd = state.data.length;
       state.windowStart = Math.max(0, state.windowEnd - WINDOW_SIZE);
+      state.targetWindowSize = state.windowEnd - state.windowStart;
       state.noMoreOlder = false;
 
       renderAll();
@@ -656,23 +698,17 @@ dbg('Script loaded.');
     loggedFetch(CC_BASE + '/pricemultifull?fsyms=ETH,BSV&tsyms=KRW', 'CC:refresh')
       .then(function (cur) {
         var raw = cur && cur.RAW;
-        if (!raw || !raw.ETH || !raw.ETH.KRW || !raw.BSV || !raw.BSV.KRW) {
-          throw new Error('가격 데이터 없음');
-        }
+        if (!raw || !raw.ETH || !raw.ETH.KRW || !raw.BSV || !raw.BSV.KRW) throw new Error('가격 데이터 없음');
         state.currentEth = raw.ETH.KRW.PRICE;
         state.currentBsv = raw.BSV.KRW.PRICE;
         if (!(state.currentBsv > 0)) throw new Error('BSV 가격 오류');
         state.currentRatio = state.currentEth / state.currentBsv;
-        // Append the latest hourly point if newer than what we have
         renderHero();
         renderPrices();
         $('#updated').textContent = '마지막 업데이트: ' + new Date().toLocaleString('ko-KR');
         setStatus('완료', 'ok');
       })
-      .catch(function (e) {
-        dbg('refresh failed: ' + e.message);
-        setStatus('갱신 실패', 'warn');
-      })
+      .catch(function (e) { dbg('refresh failed: ' + e.message); setStatus('갱신 실패', 'warn'); })
       .then(function () { isFetchingCurrent = false; });
   }
 
@@ -683,8 +719,7 @@ dbg('Script loaded.');
 
     var oldestSec = state.data[0].time;
     var toTs = Math.floor(oldestSec) - 1;
-
-    dbg('fetchOlder: toTs=' + toTs + ', oldest=' + new Date(oldestSec*1000).toISOString());
+    dbg('fetchOlder: toTs=' + toTs);
 
     Promise.all([
       loggedFetch(CC_BASE + '/v2/histohour?fsym=ETH&tsym=KRW&limit=' + FETCH_OLDER_LIMIT + '&toTs=' + toTs, 'CC:eth-older'),
@@ -694,7 +729,6 @@ dbg('Script loaded.');
       var ba = (r[1] && r[1].Data && r[1].Data.Data) || [];
       var older = alignSeries(ea, ba);
 
-      // Filter to ensure no overlap with existing data
       var existingTimes = {};
       for (var i = 0; i < state.data.length; i++) existingTimes[state.data[i].time] = true;
       var filtered = [];
@@ -707,12 +741,28 @@ dbg('Script loaded.');
         state.noMoreOlder = true;
       } else {
         dbg('Prepending ' + filtered.length + ' older points.');
+        var prevActualSize = state.windowEnd - state.windowStart;
         state.data = filtered.concat(state.data);
-        // Preserve visual window position
-        state.windowStart += filtered.length;
-        state.windowEnd   += filtered.length;
+
+        if (prevActualSize < state.targetWindowSize) {
+          // Want to expand: extend the window leftward to absorb new data
+          var canExpand = Math.min(state.targetWindowSize - prevActualSize, filtered.length);
+          state.windowEnd   += filtered.length;
+          state.windowStart += (filtered.length - canExpand);
+        } else {
+          // Preserve visual position (existing pan behavior)
+          state.windowStart += filtered.length;
+          state.windowEnd   += filtered.length;
+        }
+
         renderChart();
         renderStats();
+
+        // Keep fetching if still under target
+        if (state.windowEnd - state.windowStart < state.targetWindowSize && !state.noMoreOlder) {
+          setTimeout(function () { state.isLoadingOlder = false; $('#chart-loading-older').hidden = true; fetchOlder(); }, 220);
+          return;
+        }
       }
     }).catch(function (e) {
       dbg('fetchOlder failed: ' + e.message);
@@ -726,13 +776,9 @@ dbg('Script loaded.');
   // Render
   // ===================================================================
   function renderAll() {
-    renderHero();
-    renderPrices();
-    renderChartStyling();
-    renderChart();
-    renderStats();
-    renderChartTitle();
-    renderPriceRowActiveState();
+    renderHero(); renderPrices(); renderChartStyling();
+    renderChart(); renderStats();
+    renderChartTitle(); renderPriceRowActiveState();
     updateModeIndicator();
   }
 
@@ -751,12 +797,10 @@ dbg('Script loaded.');
       } else { ch.textContent = '—'; ch.className = 'hero-change'; }
     } else { ch.textContent = '—'; ch.className = 'hero-change'; }
   }
-
   function renderPrices() {
     $('#eth-price').textContent = state.currentEth != null ? fmtKRW(state.currentEth) : '—';
     $('#bsv-price').textContent = state.currentBsv != null ? fmtKRW(state.currentBsv) : '—';
   }
-
   function renderChartTitle() {
     var t = state.chartType === 'eth' ? 'Ethereum 가격 추이'
           : state.chartType === 'bsv' ? 'Bitcoin SV 가격 추이'
@@ -769,13 +813,10 @@ dbg('Script loaded.');
     $('#stat-max-label').textContent = '기간 최고 ' + lab;
     $('#stat-avg-label').textContent = '기간 평균 ' + lab;
   }
-
   function renderPriceRowActiveState() {
-    var rEth = $('#row-eth'), rBsv = $('#row-bsv');
-    rEth.classList.toggle('active', state.chartType === 'eth');
-    rBsv.classList.toggle('active', state.chartType === 'bsv');
+    $('#row-eth').classList.toggle('active', state.chartType === 'eth');
+    $('#row-bsv').classList.toggle('active', state.chartType === 'bsv');
   }
-
   function renderChartStyling() {
     var c = COLORS[state.chartType] || COLORS.ratio;
     $('#line-path').setAttribute('stroke', c);
@@ -785,24 +826,25 @@ dbg('Script loaded.');
   }
 
   function renderStats() {
-    if (state.data.length === 0) return;
-    var visible = getVisibleValues();
-    if (visible.length === 0) return;
+    if (state.data.length === 0 || state.windowEnd <= state.windowStart) return;
+    var s = visibleStats();
+    $('#stat-min').textContent = s.min != null ? fmtChartFull(s.min) : '—';
+    $('#stat-max').textContent = s.max != null ? fmtChartFull(s.max) : '—';
+    $('#stat-avg').textContent = s.avg != null ? fmtChartFull(s.avg) : '—';
 
-    var vals = visible.map(function (d) { return d.value; });
-    var mn = Math.min.apply(null, vals);
-    var mx = Math.max.apply(null, vals);
-    var sum = 0; for (var i = 0; i < vals.length; i++) sum += vals[i];
-    var avg = sum / vals.length;
+    var first = state.data[state.windowStart].date;
+    var last  = state.data[state.windowEnd - 1].date;
+    var hours = (last.getTime() - first.getTime()) / (1000 * 60 * 60) + 1;
+    var dur   = fmtDuration(hours);
 
-    $('#stat-min').textContent = fmtChartValueFull(mn);
-    $('#stat-max').textContent = fmtChartValueFull(mx);
-    $('#stat-avg').textContent = fmtChartValueFull(avg);
-
-    var first = visible[0].date, last = visible[visible.length - 1].date;
     var fy = first.getFullYear(), ly = last.getFullYear();
-    var yearStr = (fy === ly) ? fy : (fy + '~' + ly);
-    $('#stat-range').textContent = yearStr + ' · ' + formatDateShort(first) + ' — ' + formatDateShort(last);
+    var sameYr = (fy === ly);
+    var f = sameYr ? (first.getMonth()+1)+'/'+first.getDate()
+                   : (first.getMonth()+1)+'/'+first.getDate()+'/'+String(fy).slice(-2);
+    var l = sameYr ? (last.getMonth()+1)+'/'+last.getDate()
+                   : (last.getMonth()+1)+'/'+last.getDate()+'/'+String(ly).slice(-2);
+    var prefix = sameYr ? (fy + ' · ') : '';
+    $('#stat-range').textContent = dur + ' · ' + prefix + f + ' — ' + l;
   }
 
   function svgEl(tag, attrs) {
@@ -814,8 +856,8 @@ dbg('Script loaded.');
 
   function renderChart() {
     if (state.data.length === 0) return;
-    var visible = getVisibleValues();
-    if (visible.length === 0) return;
+    var rd = getRenderData();
+    if (rd.length === 0) return;
 
     var svg = $('#chart');
     var wrap = $('#chart-wrap');
@@ -829,52 +871,60 @@ dbg('Script loaded.');
     svg.setAttribute('height', height);
     svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
 
-    var vals = visible.map(function (d) { return d.value; });
-    var minV = Math.min.apply(null, vals);
-    var maxV = Math.max.apply(null, vals);
+    var minV = Infinity, maxV = -Infinity;
+    for (var i = 0; i < rd.length; i++) {
+      if (rd[i].value < minV) minV = rd[i].value;
+      if (rd[i].value > maxV) maxV = rd[i].value;
+    }
     var span = (maxV - minV) || (Math.abs(maxV) * 0.01) || 1;
     var yMin = minV - span * 0.06;
     var yMax = maxV + span * 0.06;
     var yRange = yMax - yMin;
-    var n = visible.length;
-    var xAt = function (i) { return padding.left + (n > 1 ? (i / (n - 1)) * plotW : 0); };
-    var yAt = function (v) { return padding.top + (1 - (v - yMin) / yRange) * plotH; };
-    chartGeom = { width: width, height: height, padding: padding, plotW: plotW, plotH: plotH, xAt: xAt, yAt: yAt, n: n };
+    var n = rd.length;
+    var xAt = function (idx) { return padding.left + (n > 1 ? (idx / (n - 1)) * plotW : 0); };
+    var yAt = function (v)   { return padding.top + (1 - (v - yMin) / yRange) * plotH; };
+    chartGeom = {
+      width: width, height: height, padding: padding,
+      plotW: plotW, plotH: plotH, xAt: xAt, yAt: yAt, n: n, rd: rd,
+    };
 
-    var line = '';
-    for (var i = 0; i < n; i++) line += (i === 0 ? 'M' : 'L') + xAt(i).toFixed(2) + ',' + yAt(visible[i].value).toFixed(2);
-    $('#line-path').setAttribute('d', line);
+    // Build line path
+    var parts = new Array(n);
+    for (var k = 0; k < n; k++) {
+      parts[k] = (k === 0 ? 'M' : 'L') + xAt(k).toFixed(1) + ',' + yAt(rd[k].value).toFixed(1);
+    }
+    $('#line-path').setAttribute('d', parts.join(''));
 
+    // Area
     var baseY = padding.top + plotH;
-    var area = 'M' + xAt(0).toFixed(2) + ',' + baseY.toFixed(2);
-    for (var j = 0; j < n; j++) area += ' L' + xAt(j).toFixed(2) + ',' + yAt(visible[j].value).toFixed(2);
-    area += ' L' + xAt(n - 1).toFixed(2) + ',' + baseY.toFixed(2) + ' Z';
-    $('#area-path').setAttribute('d', area);
+    var aParts = ['M' + xAt(0).toFixed(1) + ',' + baseY.toFixed(1)];
+    for (var m = 0; m < n; m++) aParts.push('L' + xAt(m).toFixed(1) + ',' + yAt(rd[m].value).toFixed(1));
+    aParts.push('L' + xAt(n - 1).toFixed(1) + ',' + baseY.toFixed(1) + 'Z');
+    $('#area-path').setAttribute('d', aParts.join(''));
 
+    // Grid + Y labels
     var grid = $('#grid'), yLabels = $('#y-labels');
     clearGroup(grid); clearGroup(yLabels);
-    for (var k = 0; k <= 4; k++) {
-      var v = yMin + (yRange * k / 4);
+    for (var g = 0; g <= 4; g++) {
+      var v = yMin + (yRange * g / 4);
       var y = yAt(v);
       grid.appendChild(svgEl('line', { x1: padding.left, x2: width - padding.right, y1: y, y2: y, stroke: 'rgba(128,128,128,0.22)', 'stroke-width': '0.5' }));
-      var label = svgEl('text', { x: padding.left - 8, y: y + 4, 'text-anchor': 'end', 'font-size': '10.5', fill: '#8e8e93', 'font-family': 'inherit' });
-      label.textContent = fmtChartValue(v);
-      yLabels.appendChild(label);
+      var lab = svgEl('text', { x: padding.left - 8, y: y + 4, 'text-anchor': 'end', 'font-size': '10.5', fill: '#8e8e93', 'font-family': 'inherit' });
+      lab.textContent = fmtChartAxis(v);
+      yLabels.appendChild(lab);
     }
 
+    // X labels (3 anchors, format based on visible span)
     var xLabels = $('#x-labels');
     clearGroup(xLabels);
-    var indices = [0, Math.floor((n - 1) / 2), n - 1];
+    var firstD = rd[0].date, lastD = rd[n-1].date;
+    var spanH = (lastD.getTime() - firstD.getTime()) / (1000 * 60 * 60);
+    var idxs = [0, Math.floor((n - 1) / 2), n - 1];
     var anchors = ['start', 'middle', 'end'];
-    indices.forEach(function (idx, jj) {
-      var d = visible[idx].date;
+    idxs.forEach(function (idx, jj) {
+      var d = rd[idx].date;
       var t = svgEl('text', { x: xAt(idx), y: height - 6, 'text-anchor': anchors[jj], 'font-size': '10.5', fill: '#8e8e93', 'font-family': 'inherit' });
-      // Show year if different from current
-      var now = new Date();
-      var label = (d.getFullYear() !== now.getFullYear())
-        ? (d.getFullYear() + '/' + (d.getMonth()+1) + '/' + d.getDate())
-        : ((d.getMonth()+1) + '/' + d.getDate());
-      t.textContent = label;
+      t.textContent = formatXLabel(d, spanH);
       xLabels.appendChild(t);
     });
 
@@ -883,11 +933,11 @@ dbg('Script loaded.');
   }
 
   function showCursorAt(localIdx) {
-    if (!chartGeom) return;
-    var visible = getVisibleValues();
-    if (!visible[localIdx]) return;
+    if (!chartGeom || !chartGeom.rd) return;
+    var rd = chartGeom.rd;
+    if (!rd[localIdx]) return;
     var p = chartGeom.padding;
-    var d = visible[localIdx];
+    var d = rd[localIdx];
     var x = chartGeom.xAt(localIdx);
     var y = chartGeom.yAt(d.value);
     var line = $('#cursor-line');
@@ -899,7 +949,7 @@ dbg('Script loaded.');
     dot.setAttribute('opacity', '1');
     var tooltip = $('#tooltip');
     $('#tt-date').textContent  = formatDateFull(d.date);
-    $('#tt-value').textContent = fmtChartValueFull(d.value);
+    $('#tt-value').textContent = fmtChartFull(d.value);
     tooltip.hidden = false;
     var svg = $('#chart');
     var rendered = svg.getBoundingClientRect().width || chartGeom.width;
@@ -915,8 +965,16 @@ dbg('Script loaded.');
     $('#cursor-dot').setAttribute('opacity', '0');
     $('#tooltip').hidden = true;
   }
-  function isCursorVisible() {
-    return !$('#tooltip').hidden;
+  function isCursorVisible() { return !$('#tooltip').hidden; }
+
+  function showZoomBadge() {
+    var b = $('#zoom-badge');
+    if (!b) return;
+    var hours = state.windowEnd - state.windowStart;
+    b.textContent = fmtDuration(hours);
+    b.classList.add('visible');
+    if (zoomBadgeTimer) clearTimeout(zoomBadgeTimer);
+    zoomBadgeTimer = setTimeout(function () { b.classList.remove('visible'); }, 1200);
   }
 
   // ===================================================================
@@ -930,38 +988,78 @@ dbg('Script loaded.');
       txt.textContent = '이동 모드 (드래그)';
     } else {
       pill.classList.remove('pan');
-      txt.textContent = '시점 확인 (탭하여 이동 모드)';
+      txt.textContent = '시점 확인';
     }
   }
-
   function setMode(m) {
     if (state.mode === m) return;
     state.mode = m;
     updateModeIndicator();
     if (m === 'pan') hideCursor();
   }
-
   function setChartType(t) {
     if (state.chartType === t) return;
     state.chartType = t;
-    hideCursor();  // value changes, old tooltip stale
-    renderChartTitle();
-    renderPriceRowActiveState();
-    renderChartStyling();
-    renderChart();
-    renderStats();
+    hideCursor();
+    renderChartTitle(); renderPriceRowActiveState();
+    renderChartStyling(); renderChart(); renderStats();
   }
 
   // ===================================================================
-  // Chart interaction (touch + mouse on the wrapper div)
+  // Zoom
+  // ===================================================================
+  function setZoom(newSize, anchorDataIdx) {
+    newSize = Math.max(MIN_WINDOW, Math.min(MAX_WINDOW, newSize));
+    state.targetWindowSize = newSize;
+
+    var oldSize = state.windowEnd - state.windowStart;
+    var anchorFrac = oldSize > 0 ? (anchorDataIdx - state.windowStart) / oldSize : 0.5;
+    if (anchorFrac < 0) anchorFrac = 0;
+    if (anchorFrac > 1) anchorFrac = 1;
+
+    var newStart = anchorDataIdx - Math.round(newSize * anchorFrac);
+    var newEnd   = newStart + newSize;
+
+    if (newEnd > state.data.length) {
+      var over = newEnd - state.data.length;
+      newEnd -= over; newStart -= over;
+    }
+    if (newStart < 0) {
+      newEnd -= newStart;
+      newStart = 0;
+      if (newEnd > state.data.length) newEnd = state.data.length;
+    }
+
+    state.windowStart = newStart;
+    state.windowEnd   = newEnd;
+    state.panAccum = 0;
+
+    hideCursor();
+    renderChart();
+    renderStats();
+    showZoomBadge();
+
+    if (state.windowEnd - state.windowStart < state.targetWindowSize
+        && !state.noMoreOlder && !state.isLoadingOlder) {
+      fetchOlder();
+    }
+  }
+
+  // ===================================================================
+  // Chart interaction (touch + mouse + pinch + wheel)
   // ===================================================================
   function setupChartInteraction() {
     var wrap = $('#chart-wrap');
     if (!wrap) return;
 
+    // -- Single-touch state (scrub/pan) --
     var startX = null, startY = null, startTime = 0;
-    var didDrag = false, lastX = null;
-    var showedInStart = false;
+    var didDrag = false, lastX = null, showedInStart = false;
+
+    // -- Pinch state --
+    var pinchActive = false, pinchCooldown = false;
+    var pinchInitDist = 0, pinchInitSize = 0, pinchAnchorIdx = 0;
+    var pinchRAF = null, pendingPinch = null;
 
     function clientXToLocalIdx(clientX) {
       if (!chartGeom) return -1;
@@ -974,58 +1072,47 @@ dbg('Script loaded.');
       r = Math.max(0, Math.min(1, r));
       return Math.round(r * (chartGeom.n - 1));
     }
+    function clientXToDataIdx(clientX) {
+      if (!chartGeom || !chartGeom.rd) return state.windowStart;
+      var lIdx = clientXToLocalIdx(clientX);
+      if (lIdx >= 0 && chartGeom.rd[lIdx]) return chartGeom.rd[lIdx].dataIdx;
+      return state.windowStart;
+    }
+    function touchDist(t) {
+      var dx = t[0].clientX - t[1].clientX;
+      var dy = t[0].clientY - t[1].clientY;
+      return Math.sqrt(dx*dx + dy*dy);
+    }
+    function touchCenterX(t) { return (t[0].clientX + t[1].clientX) / 2; }
 
-    function handleStart(clientX, clientY) {
+    // ---- Single-touch handlers ----
+    function singleStart(clientX, clientY) {
       startX = clientX; startY = clientY;
       startTime = Date.now();
       didDrag = false; lastX = clientX;
       showedInStart = false;
-
       if (state.mode === 'scrub') {
-        // First-tap behavior: if cursor not visible, show immediately for responsiveness
         if (!isCursorVisible()) {
           showCursorAt(clientXToLocalIdx(clientX));
           showedInStart = true;
         }
-        // else: tooltip already visible, wait to see if this is a tap (toggle) or drag (update)
       }
-      // Pan mode: do nothing yet
     }
-
-    function handleMove(clientX, clientY) {
+    function singleMove(clientX, clientY) {
       if (startX === null) return;
-      var totalDx = Math.abs(clientX - startX);
-      var totalDy = Math.abs(clientY - startY);
-      if (!didDrag && (totalDx > 8 || totalDy > 8)) {
-        didDrag = true;
-        showedInStart = false; // a drag, not a tap-show
-      }
+      var tdx = Math.abs(clientX - startX), tdy = Math.abs(clientY - startY);
+      if (!didDrag && (tdx > 8 || tdy > 8)) { didDrag = true; showedInStart = false; }
       if (didDrag) {
-        if (state.mode === 'scrub') {
-          showCursorAt(clientXToLocalIdx(clientX));
-        } else {
-          // pan mode
-          var dx = clientX - lastX;
-          lastX = clientX;
-          applyPan(dx);
-        }
+        if (state.mode === 'scrub') showCursorAt(clientXToLocalIdx(clientX));
+        else { var dx = clientX - lastX; lastX = clientX; applyPan(dx); }
       }
     }
-
-    function handleEnd() {
+    function singleEnd() {
       var dur = Date.now() - startTime;
       if (!didDrag && dur < 600) {
-        // Tap
         if (state.mode === 'scrub') {
-          if (showedInStart) {
-            // First tap that revealed tooltip — keep it, stay in scrub
-            // (no action needed; cursor already shown)
-          } else {
-            // Tooltip was already visible before this tap → toggle to pan
-            setMode('pan');
-          }
+          if (!showedInStart) setMode('pan');
         } else {
-          // pan mode → switch back to scrub and show cursor at tap point
           setMode('scrub');
           showCursorAt(clientXToLocalIdx(startX));
         }
@@ -1033,6 +1120,35 @@ dbg('Script loaded.');
       startX = null;
     }
 
+    // ---- Pinch handlers ----
+    function pinchStart(touches) {
+      pinchActive = true;
+      pinchInitDist = touchDist(touches);
+      pinchInitSize = state.windowEnd - state.windowStart;
+      pinchAnchorIdx = clientXToDataIdx(touchCenterX(touches));
+      hideCursor();
+      startX = null;
+      didDrag = false;
+    }
+    function pinchUpdate(touches) {
+      if (!pinchActive) return;
+      var d = touchDist(touches);
+      if (d <= 0 || pinchInitDist <= 0) return;
+      var newSize = Math.round(pinchInitSize * (pinchInitDist / d));
+      pendingPinch = { size: newSize, anchor: pinchAnchorIdx };
+      if (!pinchRAF) {
+        pinchRAF = requestAnimationFrame(function () {
+          pinchRAF = null;
+          if (pendingPinch) {
+            setZoom(pendingPinch.size, pendingPinch.anchor);
+            pendingPinch = null;
+          }
+        });
+      }
+    }
+    function pinchEnd() { pinchActive = false; }
+
+    // ---- passive option detection ----
     var passiveOpts = false;
     try {
       var probe = Object.defineProperty({}, 'passive', { get: function () { passiveOpts = true; return false; } });
@@ -1041,33 +1157,56 @@ dbg('Script loaded.');
     } catch (_) {}
     var touchOpts = passiveOpts ? { passive: false } : false;
 
+    // ---- Touch event dispatch ----
     wrap.addEventListener('touchstart', function (e) {
-      if (e.touches.length > 0) {
+      if (e.touches.length === 2) {
         try { e.preventDefault(); } catch (_) {}
-        handleStart(e.touches[0].clientX, e.touches[0].clientY);
+        pinchStart(e.touches);
+      } else if (e.touches.length === 1 && !pinchActive && !pinchCooldown) {
+        try { e.preventDefault(); } catch (_) {}
+        singleStart(e.touches[0].clientX, e.touches[0].clientY);
       }
     }, touchOpts);
-    wrap.addEventListener('touchmove', function (e) {
-      if (e.touches.length > 0) {
-        try { e.preventDefault(); } catch (_) {}
-        handleMove(e.touches[0].clientX, e.touches[0].clientY);
-      }
-    }, touchOpts);
-    wrap.addEventListener('touchend',    function () { handleEnd(); });
-    wrap.addEventListener('touchcancel', function () { handleEnd(); });
 
-    wrap.addEventListener('mousedown', function (e) { handleStart(e.clientX, e.clientY); });
-    wrap.addEventListener('mousemove', function (e) {
-      if (startX !== null) handleMove(e.clientX, e.clientY);
-    });
-    wrap.addEventListener('mouseup',   function () { handleEnd(); });
-    wrap.addEventListener('mouseleave', function () {
-      if (state.mode === 'scrub' && startX === null) {
-        // Hide on hover-leave (desktop)
-        // But only if not in middle of interaction
+    wrap.addEventListener('touchmove', function (e) {
+      if (pinchActive && e.touches.length === 2) {
+        try { e.preventDefault(); } catch (_) {}
+        pinchUpdate(e.touches);
+      } else if (!pinchActive && !pinchCooldown && e.touches.length === 1) {
+        try { e.preventDefault(); } catch (_) {}
+        singleMove(e.touches[0].clientX, e.touches[0].clientY);
       }
-      handleEnd();
+    }, touchOpts);
+
+    wrap.addEventListener('touchend', function (e) {
+      if (pinchActive) {
+        pinchEnd();
+        if (e.touches.length > 0) pinchCooldown = true;
+      } else if (pinchCooldown) {
+        if (e.touches.length === 0) pinchCooldown = false;
+      } else {
+        if (startX !== null) singleEnd();
+      }
     });
+    wrap.addEventListener('touchcancel', function () {
+      pinchEnd(); pinchCooldown = false;
+      if (startX !== null) singleEnd();
+    });
+
+    // ---- Mouse + wheel for desktop ----
+    wrap.addEventListener('mousedown',  function (e) { singleStart(e.clientX, e.clientY); });
+    wrap.addEventListener('mousemove',  function (e) { if (startX !== null) singleMove(e.clientX, e.clientY); });
+    wrap.addEventListener('mouseup',    function () { singleEnd(); });
+    wrap.addEventListener('mouseleave', function () { singleEnd(); });
+
+    wrap.addEventListener('wheel', function (e) {
+      try { e.preventDefault(); } catch (_) {}
+      var factor = e.deltaY > 0 ? 1.25 : 0.8;
+      var curSize = state.windowEnd - state.windowStart;
+      var newSize = Math.round(curSize * factor);
+      var anchorIdx = clientXToDataIdx(e.clientX);
+      setZoom(newSize, anchorIdx);
+    }, touchOpts);
   }
 
   // ===================================================================
@@ -1080,7 +1219,6 @@ dbg('Script loaded.');
     if (windowW <= 0) return;
     var indicesPerPx = windowW / chartGeom.plotW;
     state.panAccum += deltaPx * indicesPerPx;
-
     if (!panRAF) {
       panRAF = requestAnimationFrame(function () {
         panRAF = null;
@@ -1091,32 +1229,23 @@ dbg('Script loaded.');
       });
     }
   }
-
   function applyPanShift(shift) {
-    // shift > 0 => drag right => show older data => decrease indices
     var newStart = state.windowStart - shift;
-    var newEnd   = state.windowEnd - shift;
-
-    // Clamp newer edge
+    var newEnd   = state.windowEnd   - shift;
     if (newEnd > state.data.length) {
       var over = newEnd - state.data.length;
-      newEnd -= over;
-      newStart -= over;
+      newEnd -= over; newStart -= over;
       state.panAccum = 0;
     }
-    // Clamp older edge
     if (newStart < 0) {
       newEnd += (-newStart);
       newStart = 0;
       state.panAccum = 0;
     }
-
     state.windowStart = newStart;
     state.windowEnd   = newEnd;
     renderChart();
     renderStats();
-
-    // Prefetch older data when approaching the left edge
     if (state.windowStart < PREFETCH_THRESHOLD && !state.isLoadingOlder && !state.noMoreOlder) {
       fetchOlder();
     }
@@ -1130,11 +1259,7 @@ dbg('Script loaded.');
       var row = document.getElementById(rowId);
       if (!row) return;
       row.addEventListener('click', function () {
-        if (state.chartType === coin) {
-          setChartType('ratio');
-        } else {
-          setChartType(coin);
-        }
+        setChartType(state.chartType === coin ? 'ratio' : coin);
       });
     }
     bind('row-eth', 'eth');
@@ -1168,7 +1293,6 @@ dbg('Script loaded.');
     else { setLiveIndicator(false); }
   });
 
-  // Resize
   var resizeTimer = null;
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
@@ -1187,7 +1311,7 @@ dbg('Script loaded.');
       $('#refresh').addEventListener('click', function () { debugLog = ''; hideError(); fetchInitial(); });
     } catch (e) { dbg('refresh bind failed: ' + e.message); }
     try { setupChartInteraction(); } catch (e) { dbg('setupChartInteraction failed: ' + e.message); }
-    try { setupCoinRowTaps(); } catch (e) { dbg('setupCoinRowTaps failed: ' + e.message); }
+    try { setupCoinRowTaps(); }   catch (e) { dbg('setupCoinRowTaps failed: ' + e.message); }
     updateModeIndicator();
     fetchInitial().then(function () { startAutoRefresh(); });
   }
