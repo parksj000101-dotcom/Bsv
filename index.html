@@ -26,8 +26,8 @@
     --loss: #c81e1e;
     --eth: #627eea;
     --bsv: #eab300;
-    --chart-color: #0a84ff;
     --tooltip-shadow: rgba(0, 0, 0, 0.08);
+    --live-dot: #30d158;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -84,12 +84,6 @@
   }
   .err-title { font-weight: 700; color: var(--danger); margin-bottom: 6px; font-size: 14px; }
   .err-msg { margin-bottom: 8px; color: var(--text); word-break: break-word; }
-  .err-hint {
-    margin-top: 10px; padding-top: 10px;
-    border-top: 0.5px solid var(--border);
-    color: var(--text-muted); font-size: 12px; line-height: 1.6;
-  }
-  .err-hint a { color: var(--accent); text-decoration: none; word-break: break-all; }
   details.err-details { margin: 6px 0 4px; }
   details.err-details summary { cursor: pointer; color: var(--text-muted); font-size: 12px; padding: 4px 0; }
   pre.err-log {
@@ -111,10 +105,7 @@
     .err-title { color: var(--loss); }
   }
 
-  .hero {
-    padding: 20px 18px 22px;
-    text-align: center;
-  }
+  .hero { padding: 20px 18px 22px; text-align: center; }
   .hero-label {
     font-size: 12px; color: var(--text-muted);
     text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
@@ -168,12 +159,14 @@
     position: relative; height: 240px;
     margin: 0 4px 4px;
     -webkit-user-select: none; user-select: none;
+    touch-action: none;            /* critical for iOS — capture all touches */
   }
-  .chart { width: 100%; height: 100%; touch-action: none; display: block; }
+  .chart { width: 100%; height: 100%; display: block; pointer-events: none; }
   .chart-loading {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
     color: var(--text-muted); font-size: 13px;
+    pointer-events: none;
   }
   .chart-tooltip {
     position: absolute; top: 6px;
@@ -232,7 +225,29 @@
     .status.err { color: var(--loss); }
   }
 
-  .updated { margin-top: 10px; padding: 0 4px; font-size: 11px; color: var(--text-faint); }
+  /* Live auto-refresh indicator */
+  .live-indicator {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--text-muted);
+    margin-top: 8px; padding: 0 4px;
+  }
+  .live-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--live-dot);
+    box-shadow: 0 0 0 0 var(--live-dot);
+    animation: pulse 2s infinite;
+  }
+  .live-indicator.paused .live-dot {
+    background: var(--text-faint);
+    animation: none;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(48, 209, 88, 0.5); }
+    70%  { box-shadow: 0 0 0 6px rgba(48, 209, 88, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(48, 209, 88, 0); }
+  }
+
+  .updated { margin-top: 4px; padding: 0 4px; font-size: 11px; color: var(--text-faint); }
   .footer { margin-top: 18px; padding: 0 4px; font-size: 10px; color: var(--text-faint); text-align: center; }
 </style>
 </head>
@@ -243,19 +258,13 @@
     <div class="subtitle">실시간 환율 비교 · 지난 30일 추이</div>
   </header>
 
-  <!-- Visible error banner (hidden by default) -->
   <div id="err-banner" class="err-banner" hidden>
     <div class="err-title">⚠ 데이터 조회 오류</div>
     <div id="err-msg" class="err-msg"></div>
-    <details class="err-details" open>
+    <details class="err-details">
       <summary>상세 로그 (탭하여 펼치기)</summary>
       <pre id="err-log" class="err-log"></pre>
     </details>
-    <div class="err-hint">
-      <strong>iPhone에서 파일을 직접 열었다면 거의 항상 이게 원인입니다.</strong>
-      iOS Safari는 <code>file://</code> 또는 iCloud Drive에서 연 HTML이 외부 API를 호출하는 것을 차단합니다.<br>
-      해결: <a href="https://app.netlify.com/drop" target="_blank">app.netlify.com/drop</a>에 이 HTML 파일을 끌어다 놓으면 즉시 URL이 생성됩니다. 그 URL을 Safari에서 열면 정상 작동합니다.
-    </div>
   </div>
 
   <section class="card hero">
@@ -285,7 +294,7 @@
   <section class="card chart-card">
     <div class="card-header">
       <h2>지난 30일 추이</h2>
-      <div class="hint">차트를 터치하여 상세 보기</div>
+      <div class="hint">차트를 터치 · 드래그하여 상세 보기</div>
     </div>
     <div class="chart-wrap" id="chart-wrap">
       <svg id="chart" class="chart" xmlns="http://www.w3.org/2000/svg">
@@ -300,8 +309,8 @@
         <g id="x-labels"></g>
         <path id="area-path" fill="url(#area-grad)" stroke="none"/>
         <path id="line-path" fill="none" stroke="#0a84ff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-        <line id="cursor-line" stroke="#888" stroke-width="1" stroke-dasharray="3,3" opacity="0" pointer-events="none"/>
-        <circle id="cursor-dot" r="5" fill="#0a84ff" stroke="#ffffff" stroke-width="2" opacity="0" pointer-events="none"/>
+        <line id="cursor-line" stroke="#888" stroke-width="1" stroke-dasharray="3,3" opacity="0"/>
+        <circle id="cursor-dot" r="5" fill="#0a84ff" stroke="#ffffff" stroke-width="2" opacity="0"/>
       </svg>
       <div class="chart-loading" id="chart-loading">차트 불러오는 중…</div>
       <div class="chart-tooltip" id="tooltip" hidden>
@@ -325,28 +334,31 @@
     <span id="status" class="status">준비 중…</span>
   </div>
 
+  <div id="live-indicator" class="live-indicator">
+    <span class="live-dot"></span>
+    <span id="live-text">1분마다 자동 갱신 중</span>
+  </div>
+
   <div class="updated" id="updated"></div>
   <div class="footer">데이터 출처: CryptoCompare (1차) · Binance + KuCoin (2차 대체)</div>
 </div>
 
 <script>
-// ============================================================
-// Visible diagnostic logging — shows up in the error banner
-// so we can see what's actually happening on iPhone where the
-// browser console isn't easily accessible.
-// ============================================================
+// Visible diagnostic logging
 var debugLog = '';
 function dbg(msg) {
   var t = '';
   try { t = new Date().toISOString().substr(11, 12) + ' '; } catch (_) {}
   debugLog += t + msg + '\n';
+  // Keep log size bounded
+  var lines = debugLog.split('\n');
+  if (lines.length > 200) debugLog = lines.slice(-200).join('\n');
   try { console.log('[ETH/BSV]', msg); } catch (_) {}
   try {
     var el = document.getElementById('err-log');
     if (el) el.textContent = debugLog;
   } catch (_) {}
 }
-
 function showError(msg) {
   try {
     var banner = document.getElementById('err-banner');
@@ -359,35 +371,33 @@ function hideError() {
   try { document.getElementById('err-banner').hidden = true; } catch (_) {}
 }
 
-// Catch any uncaught error so the user can see it
 window.addEventListener('error', function (e) {
-  var info = e.message + ' @ ' + (e.filename || '?') + ':' + (e.lineno || '?');
-  dbg('WINDOW ERROR: ' + info);
+  dbg('WINDOW ERROR: ' + e.message + ' @ ' + (e.filename || '?') + ':' + (e.lineno || '?'));
   showError('스크립트 오류: ' + e.message);
 });
 window.addEventListener('unhandledrejection', function (e) {
   var r = (e.reason && e.reason.message) ? e.reason.message : String(e.reason);
   dbg('UNHANDLED REJECTION: ' + r);
-  showError('Promise 오류: ' + r);
 });
 
 dbg('Script loaded. UA = ' + (navigator.userAgent || '?').substr(0, 100));
-dbg('Origin = ' + (window.location.origin || '(file://)') + ', Protocol = ' + window.location.protocol);
 
 (function () {
+  var REFRESH_INTERVAL_MS = 60 * 1000;   // 1 minute
   var chartData = [];
   var chartGeom = null;
+  var refreshTimer = null;
+  var isFetching = false;
 
-  var $ = function (sel) { return document.querySelector(sel); };
+  function $(sel) { return document.querySelector(sel); }
 
-  function fmtKRW(n) { return '₩ ' + Math.round(n).toLocaleString('ko-KR'); }
+  function fmtKRW(n)   { return '₩ ' + Math.round(n).toLocaleString('ko-KR'); }
   function fmtRatio(n) {
     if (n >= 100) return n.toFixed(2);
     if (n >= 10)  return n.toFixed(3);
     return n.toFixed(4);
   }
-  function fmtPct(n) { return (n >= 0 ? '+' : '') + n.toFixed(2) + '%'; }
-
+  function fmtPct(n)   { return (n >= 0 ? '+' : '') + n.toFixed(2) + '%'; }
   function formatDateShort(d) { return (d.getMonth() + 1) + '/' + d.getDate(); }
   function formatDateFull(d) {
     var dow = ['일','월','화','수','목','금','토'][d.getDay()];
@@ -403,7 +413,6 @@ dbg('Origin = ' + (window.location.origin || '(file://)') + ', Protocol = ' + wi
     el.className = 'status' + (kind ? ' ' + kind : '');
   }
 
-  // ---------- Logged fetch ----------
   function loggedFetch(url, label) {
     dbg(label + ' → GET ' + url);
     return fetch(url).then(function (r) {
@@ -411,7 +420,7 @@ dbg('Origin = ' + (window.location.origin || '(file://)') + ', Protocol = ' + wi
       if (!r.ok) throw new Error(label + ' HTTP ' + r.status);
       return r.json();
     }).then(function (j) {
-      dbg(label + ' ← OK (json parsed)');
+      dbg(label + ' ← OK');
       return j;
     }).catch(function (e) {
       dbg(label + ' ✕ ' + (e.message || e));
@@ -420,53 +429,44 @@ dbg('Origin = ' + (window.location.origin || '(file://)') + ', Protocol = ' + wi
   }
 
   // ---------- Data sources ----------
-  // Source 1: CryptoCompare (KRW directly)
   function fetchFromCryptoCompare() {
     var CC = 'https://min-api.cryptocompare.com/data';
     return Promise.all([
       loggedFetch(CC + '/pricemultifull?fsyms=ETH,BSV&tsyms=KRW', 'CC:current'),
       loggedFetch(CC + '/v2/histohour?fsym=ETH&tsym=KRW&limit=720', 'CC:eth-hist'),
       loggedFetch(CC + '/v2/histohour?fsym=BSV&tsym=KRW&limit=720', 'CC:bsv-hist'),
-    ]).then(function (results) {
-      var cur = results[0], ethHist = results[1], bsvHist = results[2];
-
+    ]).then(function (r) {
+      var cur = r[0], ethHist = r[1], bsvHist = r[2];
       if (ethHist.Response === 'Error' || bsvHist.Response === 'Error') {
-        throw new Error('CC 히스토리 응답 오류: ' + (ethHist.Message || bsvHist.Message));
+        throw new Error('CC 히스토리 오류: ' + (ethHist.Message || bsvHist.Message));
       }
       var raw = cur.RAW;
       if (!raw || !raw.ETH || !raw.ETH.KRW || !raw.BSV || !raw.BSV.KRW) {
-        throw new Error('CC: ETH 또는 BSV 가격 데이터 없음');
+        throw new Error('CC: 가격 데이터 없음');
       }
-      var ethPrice = raw.ETH.KRW.PRICE;
-      var bsvPrice = raw.BSV.KRW.PRICE;
-      if (!isFinite(ethPrice) || !isFinite(bsvPrice) || bsvPrice <= 0) {
-        throw new Error('CC: 유효하지 않은 가격 (ETH=' + ethPrice + ', BSV=' + bsvPrice + ')');
+      var ethP = raw.ETH.KRW.PRICE, bsvP = raw.BSV.KRW.PRICE;
+      if (!isFinite(ethP) || !isFinite(bsvP) || bsvP <= 0) {
+        throw new Error('CC: 유효하지 않은 가격');
       }
-      var ethArr = (ethHist.Data && ethHist.Data.Data) || [];
-      var bsvArr = (bsvHist.Data && bsvHist.Data.Data) || [];
-      var n = Math.min(ethArr.length, bsvArr.length);
+      var ea = (ethHist.Data && ethHist.Data.Data) || [];
+      var ba = (bsvHist.Data && bsvHist.Data.Data) || [];
+      var n = Math.min(ea.length, ba.length);
       var series = [];
       for (var i = 0; i < n; i++) {
-        var e = ethArr[i], b = bsvArr[i];
+        var e = ea[i], b = ba[i];
         if (e && b && e.close > 0 && b.close > 0) {
-          series.push({
-            date: new Date((e.time || b.time) * 1000),
-            value: e.close / b.close,
-          });
+          series.push({ date: new Date((e.time || b.time) * 1000), value: e.close / b.close });
         }
       }
-      if (series.length === 0) throw new Error('CC: 히스토리 데이터 없음');
-      return { ethPrice: ethPrice, bsvPrice: bsvPrice, ratio: ethPrice / bsvPrice, series: series };
+      if (series.length === 0) throw new Error('CC: 히스토리 비어있음');
+      return { ethPrice: ethP, bsvPrice: bsvP, ratio: ethP / bsvP, series: series };
     });
   }
 
-  // Source 2: Binance (ETH/USDT) + KuCoin (BSV/USDT) + FX (USD->KRW)
   function fetchFromBinanceKuCoin() {
     var BINANCE = 'https://api.binance.com/api/v3';
     var KUCOIN  = 'https://api.kucoin.com/api/v1';
     var FX      = 'https://open.er-api.com/v6/latest/USD';
-
-    // 720 hours, but Binance limit=1000 OK
     return Promise.all([
       loggedFetch(BINANCE + '/ticker/price?symbol=ETHUSDT', 'BI:eth-now'),
       loggedFetch(KUCOIN + '/market/stats?symbol=BSV-USDT', 'KC:bsv-now'),
@@ -474,99 +474,77 @@ dbg('Origin = ' + (window.location.origin || '(file://)') + ', Protocol = ' + wi
       loggedFetch(KUCOIN + '/market/candles?symbol=BSV-USDT&type=1hour', 'KC:bsv-hist'),
       loggedFetch(FX, 'FX:usdkrw'),
     ]).then(function (r) {
-      var ethTicker = r[0];
-      var bsvStats  = r[1];
-      var ethKlines = r[2];
-      var bsvCandles= r[3];
-      var fx        = r[4];
-
-      var krwRate = fx && fx.rates && fx.rates.KRW;
+      var krwRate = r[4] && r[4].rates && r[4].rates.KRW;
       if (!krwRate) throw new Error('FX: USD->KRW 환율 없음');
-
-      var ethUsd = parseFloat(ethTicker.price);
-      var bsvUsd = parseFloat(bsvStats && bsvStats.data && bsvStats.data.last);
+      var ethUsd = parseFloat(r[0].price);
+      var bsvUsd = parseFloat(r[1] && r[1].data && r[1].data.last);
       if (!isFinite(ethUsd) || !isFinite(bsvUsd) || bsvUsd <= 0) {
-        throw new Error('2차 소스: 현재가 파싱 실패 (ETH=' + ethUsd + ', BSV=' + bsvUsd + ')');
+        throw new Error('2차: 현재가 파싱 실패');
       }
-
-      // Binance klines: [openTime, open, high, low, close, ...]
-      // KuCoin candles: [time, open, close, high, low, volume, turnover] - time in seconds
-      var ethArr = (ethKlines || []).map(function (k) {
-        return { time: Math.floor(k[0] / 1000), close: parseFloat(k[4]) };
-      });
-      var bsvArr = ((bsvCandles && bsvCandles.data) || []).map(function (c) {
-        return { time: parseInt(c[0], 10), close: parseFloat(c[2]) };
-      });
-      // KuCoin returns newest first; Binance oldest first. Sort both ascending.
-      ethArr.sort(function (a, b) { return a.time - b.time; });
-      bsvArr.sort(function (a, b) { return a.time - b.time; });
-
-      // Align by nearest timestamp (build a map of BSV by hour)
-      var bsvMap = {};
-      bsvArr.forEach(function (b) { bsvMap[b.time] = b.close; });
-
+      var ea = (r[2] || []).map(function (k) { return { time: Math.floor(k[0]/1000), close: parseFloat(k[4]) }; });
+      var ba = ((r[3] && r[3].data) || []).map(function (c) { return { time: parseInt(c[0],10), close: parseFloat(c[2]) }; });
+      ea.sort(function(a,b){return a.time-b.time;});
+      ba.sort(function(a,b){return a.time-b.time;});
+      var bm = {}; ba.forEach(function(b){bm[b.time]=b.close;});
       var series = [];
-      for (var i = 0; i < ethArr.length; i++) {
-        var e = ethArr[i];
-        // BSV may have the same or close timestamp
-        var bClose = bsvMap[e.time];
-        if (bClose == null) {
-          // Try nearest within 1h tolerance
-          var nearest = null, bestDelta = 3601;
-          for (var j = 0; j < bsvArr.length; j++) {
-            var dt = Math.abs(bsvArr[j].time - e.time);
-            if (dt < bestDelta) { bestDelta = dt; nearest = bsvArr[j]; }
+      for (var i = 0; i < ea.length; i++) {
+        var e = ea[i], bc = bm[e.time];
+        if (bc == null) {
+          var nearest = null, best = 3601;
+          for (var j = 0; j < ba.length; j++) {
+            var dt = Math.abs(ba[j].time - e.time);
+            if (dt < best) { best = dt; nearest = ba[j]; }
           }
-          if (nearest && bestDelta <= 3600) bClose = nearest.close;
+          if (nearest && best <= 3600) bc = nearest.close;
         }
-        if (bClose && bClose > 0 && e.close > 0) {
-          series.push({
-            date: new Date(e.time * 1000),
-            value: e.close / bClose,   // ratio is currency-independent
-          });
+        if (bc && bc > 0 && e.close > 0) {
+          series.push({ date: new Date(e.time * 1000), value: e.close / bc });
         }
       }
-      if (series.length === 0) throw new Error('2차 소스: 히스토리 정렬 실패');
-
-      var ethPriceKrw = ethUsd * krwRate;
-      var bsvPriceKrw = bsvUsd * krwRate;
+      if (series.length === 0) throw new Error('2차: 정렬 실패');
       return {
-        ethPrice: ethPriceKrw,
-        bsvPrice: bsvPriceKrw,
+        ethPrice: ethUsd * krwRate,
+        bsvPrice: bsvUsd * krwRate,
         ratio: ethUsd / bsvUsd,
         series: series,
       };
     });
   }
 
-  // ---------- Main fetch flow with fallback ----------
-  function fetchAll() {
-    hideError();
-    debugLog = '';
-    dbg('--- fetchAll start ---');
-    setStatus('데이터 가져오는 중… (1차: CryptoCompare)');
+  // ---------- Main fetch ----------
+  function fetchAll(opts) {
+    opts = opts || {};
+    if (isFetching) {
+      dbg('Skipping fetch — already in progress');
+      return;
+    }
+    isFetching = true;
+    if (opts.clearLog) { debugLog = ''; hideError(); }
+    dbg('--- fetchAll start (' + (opts.auto ? 'auto' : 'manual') + ') ---');
+    setStatus('데이터 가져오는 중…');
     var btn = $('#refresh');
     if (btn) btn.disabled = true;
 
     fetchFromCryptoCompare().then(function (result) {
-      dbg('Primary source succeeded.');
       applyResult(result, 'CryptoCompare');
+      hideError();
     }).catch(function (e1) {
       dbg('Primary failed: ' + e1.message);
-      setStatus('1차 실패 — 2차 시도 중 (Binance + KuCoin)', 'warn');
+      setStatus('1차 실패 — 2차 시도 중', 'warn');
       return fetchFromBinanceKuCoin().then(function (result) {
-        dbg('Secondary source succeeded.');
         applyResult(result, 'Binance + KuCoin');
+        hideError();
       }).catch(function (e2) {
         dbg('Secondary also failed: ' + e2.message);
-        throw new Error('모든 데이터 소스 실패. 1차: ' + e1.message + ' / 2차: ' + e2.message);
+        throw new Error('1차: ' + e1.message + ' / 2차: ' + e2.message);
       });
     }).catch(function (e) {
-      dbg('!!! Final error: ' + (e.message || e));
+      dbg('!!! ' + (e.message || e));
       setStatus('데이터 조회 실패', 'err');
       showError(e.message || String(e));
     }).then(function () {
       if (btn) btn.disabled = false;
+      isFetching = false;
     });
   }
 
@@ -575,27 +553,23 @@ dbg('Origin = ' + (window.location.origin || '(file://)') + ', Protocol = ' + wi
     updatePrices(result.ethPrice, result.bsvPrice);
     updateStats(result.series);
     renderChart(result.series);
-    setStatus('업데이트 완료 (' + sourceName + ')', 'ok');
+    setStatus('완료 (' + sourceName + ')', 'ok');
     try { $('#updated').textContent = '마지막 업데이트: ' + new Date().toLocaleString('ko-KR'); } catch (_) {}
   }
 
   function updateHero(ratio, data) {
     $('#current-ratio').textContent = fmtRatio(ratio);
     $('#ratio-text').textContent    = fmtRatio(ratio);
-    var changeEl = $('#ratio-change');
+    var ch = $('#ratio-change');
     if (data.length > 25) {
       var now = data[data.length - 1].value;
       var past = data[data.length - 1 - 24].value;
       if (past > 0) {
         var pct = (now - past) / past * 100;
-        changeEl.textContent = fmtPct(pct) + ' (24h)';
-        changeEl.className = 'hero-change ' + (pct > 0.005 ? 'pos' : pct < -0.005 ? 'neg' : '');
-      } else {
-        changeEl.textContent = '—'; changeEl.className = 'hero-change';
-      }
-    } else {
-      changeEl.textContent = '—'; changeEl.className = 'hero-change';
-    }
+        ch.textContent = fmtPct(pct) + ' (24h)';
+        ch.className = 'hero-change ' + (pct > 0.005 ? 'pos' : pct < -0.005 ? 'neg' : '');
+      } else { ch.textContent = '—'; ch.className = 'hero-change'; }
+    } else { ch.textContent = '—'; ch.className = 'hero-change'; }
   }
   function updatePrices(eth, bsv) {
     $('#eth-price').textContent = fmtKRW(eth);
@@ -603,14 +577,12 @@ dbg('Origin = ' + (window.location.origin || '(file://)') + ', Protocol = ' + wi
   }
   function updateStats(data) {
     var vals = data.map(function (d) { return d.value; });
-    var min = Math.min.apply(null, vals);
-    var max = Math.max.apply(null, vals);
-    var sum = 0;
-    for (var i = 0; i < vals.length; i++) sum += vals[i];
-    var avg = sum / vals.length;
-    $('#stat-min').textContent = fmtRatio(min);
-    $('#stat-max').textContent = fmtRatio(max);
-    $('#stat-avg').textContent = fmtRatio(avg);
+    var mn = Math.min.apply(null, vals);
+    var mx = Math.max.apply(null, vals);
+    var sum = 0; for (var i = 0; i < vals.length; i++) sum += vals[i];
+    $('#stat-min').textContent = fmtRatio(mn);
+    $('#stat-max').textContent = fmtRatio(mx);
+    $('#stat-avg').textContent = fmtRatio(sum / vals.length);
   }
 
   // ---------- Chart ----------
@@ -648,24 +620,19 @@ dbg('Origin = ' + (window.location.origin || '(file://)') + ', Protocol = ' + wi
     chartGeom = { width: width, height: height, padding: padding, plotW: plotW, plotH: plotH, xAt: xAt, yAt: yAt };
 
     var line = '';
-    for (var i = 0; i < n; i++) {
-      line += (i === 0 ? 'M' : 'L') + xAt(i).toFixed(2) + ',' + yAt(data[i].value).toFixed(2);
-    }
+    for (var i = 0; i < n; i++) line += (i === 0 ? 'M' : 'L') + xAt(i).toFixed(2) + ',' + yAt(data[i].value).toFixed(2);
     $('#line-path').setAttribute('d', line);
 
     var baseY = padding.top + plotH;
     var area = 'M' + xAt(0).toFixed(2) + ',' + baseY.toFixed(2);
-    for (var j = 0; j < n; j++) {
-      area += ' L' + xAt(j).toFixed(2) + ',' + yAt(data[j].value).toFixed(2);
-    }
+    for (var j = 0; j < n; j++) area += ' L' + xAt(j).toFixed(2) + ',' + yAt(data[j].value).toFixed(2);
     area += ' L' + xAt(n - 1).toFixed(2) + ',' + baseY.toFixed(2) + ' Z';
     $('#area-path').setAttribute('d', area);
 
     var grid = $('#grid'), yLabels = $('#y-labels');
     clearGroup(grid); clearGroup(yLabels);
-    var tickCount = 4;
-    for (var k = 0; k <= tickCount; k++) {
-      var v = yMin + (yRange * k / tickCount);
+    for (var k = 0; k <= 4; k++) {
+      var v = yMin + (yRange * k / 4);
       var y = yAt(v);
       grid.appendChild(svgEl('line', { x1: padding.left, x2: width - padding.right, y1: y, y2: y, stroke: 'rgba(128,128,128,0.25)', 'stroke-width': '0.5' }));
       var label = svgEl('text', { x: padding.left - 8, y: y + 4, 'text-anchor': 'end', 'font-size': '11', fill: '#8e8e93', 'font-family': 'inherit' });
@@ -720,10 +687,14 @@ dbg('Origin = ' + (window.location.origin || '(file://)') + ', Protocol = ' + wi
     $('#tooltip').hidden = true;
   }
 
+  // ---------- Chart interaction (touch + mouse on the wrapper div, not the SVG) ----------
   function setupChartInteraction() {
-    var svg = $('#chart');
-    function handleAt(clientX) {
+    var wrap = $('#chart-wrap');
+    if (!wrap) return;
+
+    function handleAtClientX(clientX) {
       if (!chartGeom || chartData.length === 0) return;
+      var svg = $('#chart');
       var rect = svg.getBoundingClientRect();
       var rendered = rect.width || chartGeom.width;
       var scale = chartGeom.width / rendered;
@@ -733,50 +704,104 @@ dbg('Origin = ' + (window.location.origin || '(file://)') + ', Protocol = ' + wi
       var idx = Math.round(r * (chartData.length - 1));
       showCursorAt(idx);
     }
-    svg.addEventListener('pointerdown', function (e) {
-      try { svg.setPointerCapture(e.pointerId); } catch (_) {}
-      handleAt(e.clientX);
-    });
-    svg.addEventListener('pointermove', function (e) {
-      if (e.pointerType === 'mouse') { handleAt(e.clientX); }
-      else if (svg.hasPointerCapture && svg.hasPointerCapture(e.pointerId)) { handleAt(e.clientX); }
-    });
-    svg.addEventListener('pointerleave', function (e) {
-      if (e.pointerType === 'mouse') hideCursor();
-    });
+
+    // Detect passive support
+    var passiveOpts = false;
+    try {
+      var probe = Object.defineProperty({}, 'passive', { get: function () { passiveOpts = true; return false; } });
+      window.addEventListener('test_passive', null, probe);
+      window.removeEventListener('test_passive', null, probe);
+    } catch (_) {}
+    var touchOpts = passiveOpts ? { passive: false } : false;
+
+    // TOUCH events — iPhone Safari
+    wrap.addEventListener('touchstart', function (e) {
+      if (e.touches.length > 0) {
+        try { e.preventDefault(); } catch (_) {}
+        handleAtClientX(e.touches[0].clientX);
+      }
+    }, touchOpts);
+
+    wrap.addEventListener('touchmove', function (e) {
+      if (e.touches.length > 0) {
+        try { e.preventDefault(); } catch (_) {}
+        handleAtClientX(e.touches[0].clientX);
+      }
+    }, touchOpts);
+
+    // MOUSE events — desktop
+    wrap.addEventListener('mousedown', function (e) { handleAtClientX(e.clientX); });
+    wrap.addEventListener('mousemove', function (e) { handleAtClientX(e.clientX); });
+    wrap.addEventListener('mouseleave', function () { hideCursor(); });
   }
 
+  // ---------- Auto-refresh ----------
+  function startAutoRefresh() {
+    stopAutoRefresh();
+    refreshTimer = setInterval(function () {
+      if (document.hidden) return;
+      fetchAll({ auto: true });
+    }, REFRESH_INTERVAL_MS);
+    setLiveIndicator(true);
+    dbg('Auto-refresh started (1 min)');
+  }
+  function stopAutoRefresh() {
+    if (refreshTimer) {
+      clearInterval(refreshTimer);
+      refreshTimer = null;
+      dbg('Auto-refresh stopped');
+    }
+    setLiveIndicator(false);
+  }
+  function setLiveIndicator(active) {
+    var el = document.getElementById('live-indicator');
+    var txt = document.getElementById('live-text');
+    if (!el || !txt) return;
+    if (active) {
+      el.classList.remove('paused');
+      txt.textContent = '1분마다 자동 갱신 중';
+    } else {
+      el.classList.add('paused');
+      txt.textContent = '자동 갱신 일시중지';
+    }
+  }
+
+  // When tab/app becomes visible again, refresh immediately
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) {
+      dbg('Page visible — immediate refresh');
+      fetchAll({ auto: true });
+      startAutoRefresh();
+    } else {
+      dbg('Page hidden');
+      setLiveIndicator(false);
+    }
+  });
+
+  // Resize / orientation
   var resizeTimer = null;
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(function () {
-      if (chartData.length > 0) renderChart(chartData);
-    }, 120);
+    resizeTimer = setTimeout(function () { if (chartData.length > 0) renderChart(chartData); }, 120);
   });
   window.addEventListener('orientationchange', function () {
     setTimeout(function () { if (chartData.length > 0) renderChart(chartData); }, 200);
   });
 
+  // ---------- Init ----------
   function init() {
     dbg('init() called');
     try {
-      $('#refresh').addEventListener('click', fetchAll);
-      dbg('Refresh button bound.');
-    } catch (e) {
-      dbg('Failed to bind refresh button: ' + e.message);
-      showError('새로고침 버튼 연결 실패: ' + e.message);
-    }
+      $('#refresh').addEventListener('click', function () { fetchAll({ clearLog: true }); });
+    } catch (e) { dbg('refresh bind failed: ' + e.message); }
     try { setupChartInteraction(); dbg('Chart interaction set up.'); }
     catch (e) { dbg('setupChartInteraction failed: ' + e.message); }
-    try { fetchAll(); }
-    catch (e) { dbg('fetchAll threw synchronously: ' + e.message); showError(e.message); }
+    fetchAll({ clearLog: true });
+    startAutoRefresh();
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 })();
 </script>
 </body>
