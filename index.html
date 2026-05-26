@@ -26,8 +26,10 @@
     --loss: #c81e1e;
     --eth: #627eea;
     --bsv: #eab300;
+    --ratio: #0a84ff;
     --tooltip-shadow: rgba(0, 0, 0, 0.08);
     --live-dot: #30d158;
+    --hover: rgba(0, 0, 0, 0.04);
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -43,7 +45,9 @@
       --loss: #ff453a;
       --eth: #8ba1f0;
       --bsv: #ffcc33;
+      --ratio: #0a84ff;
       --tooltip-shadow: rgba(0, 0, 0, 0.4);
+      --hover: rgba(255, 255, 255, 0.06);
     }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -73,7 +77,6 @@
     overflow: hidden;
   }
 
-  /* Error banner */
   .err-banner {
     background: rgba(200, 30, 30, 0.08);
     border: 1px solid rgba(200, 30, 30, 0.35);
@@ -83,22 +86,16 @@
     font-size: 13px;
   }
   .err-title { font-weight: 700; color: var(--danger); margin-bottom: 6px; font-size: 14px; }
-  .err-msg { margin-bottom: 8px; color: var(--text); word-break: break-word; }
-  details.err-details { margin: 6px 0 4px; }
+  .err-msg { margin-bottom: 8px; word-break: break-word; }
   details.err-details summary { cursor: pointer; color: var(--text-muted); font-size: 12px; padding: 4px 0; }
   pre.err-log {
     font-family: ui-monospace, 'SF Mono', Menlo, monospace;
     font-size: 10.5px; line-height: 1.4;
     background: var(--surface-2);
-    padding: 8px 10px;
-    border-radius: 6px;
-    margin: 6px 0 0;
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
-    max-height: 240px;
-    overflow-y: auto;
-    color: var(--text);
+    padding: 8px 10px; border-radius: 6px;
+    margin: 6px 0 0; overflow-x: auto;
+    white-space: pre-wrap; word-break: break-all;
+    max-height: 240px; overflow-y: auto;
   }
   @media (prefers-color-scheme: dark) {
     .err-banner { background: rgba(255, 69, 58, 0.1); border-color: rgba(255, 69, 58, 0.4); }
@@ -114,10 +111,7 @@
     font-size: 44px; font-weight: 700;
     letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.05;
   }
-  .hero-desc {
-    margin-top: 4px; font-size: 14px;
-    color: var(--text-muted); font-variant-numeric: tabular-nums;
-  }
+  .hero-desc { margin-top: 4px; font-size: 14px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
   .hero-change {
     margin-top: 10px; display: inline-block;
     padding: 5px 12px; border-radius: 8px;
@@ -125,7 +119,7 @@
     color: var(--text-muted); font-variant-numeric: tabular-nums;
   }
   .hero-change.pos { color: var(--profit); background: rgba(26, 138, 58, 0.1); }
-  .hero-change.neg { color: var(--loss); background: rgba(200, 30, 30, 0.1); }
+  .hero-change.neg { color: var(--loss);   background: rgba(200, 30, 30, 0.1); }
   @media (prefers-color-scheme: dark) {
     .hero-change.pos { background: rgba(48, 209, 88, 0.15); }
     .hero-change.neg { background: rgba(255, 69, 58, 0.15); }
@@ -135,31 +129,78 @@
     display: flex; justify-content: space-between; align-items: center;
     padding: 14px 18px;
     border-bottom: 0.5px solid var(--border);
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-user-select: none; user-select: none;
+    transition: background 0.15s;
   }
   .price-row:last-child { border-bottom: none; }
+  .price-row:active { background: var(--hover); }
+  .price-row.active[data-coin="eth"] {
+    background: rgba(98, 126, 234, 0.10);
+    box-shadow: inset 3px 0 0 var(--eth);
+  }
+  .price-row.active[data-coin="bsv"] {
+    background: rgba(234, 179, 0, 0.10);
+    box-shadow: inset 3px 0 0 var(--bsv);
+  }
+  @media (prefers-color-scheme: dark) {
+    .price-row.active[data-coin="eth"] { background: rgba(139, 161, 240, 0.15); }
+    .price-row.active[data-coin="bsv"] { background: rgba(255, 204, 51, 0.12); }
+  }
   .coin { display: flex; flex-direction: column; gap: 1px; }
   .coin-symbol { font-weight: 600; font-size: 16px; }
   .coin-symbol.eth { color: var(--eth); }
   .coin-symbol.bsv { color: var(--bsv); }
   .coin-name { font-size: 11px; color: var(--text-muted); }
-  .price {
-    font-size: 16px; font-weight: 500;
-    font-variant-numeric: tabular-nums;
+  .price-right {
+    display: flex; align-items: center; gap: 8px;
   }
+  .price { font-size: 16px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .price-chevron { color: var(--text-faint); font-size: 14px; }
 
   .chart-card { padding-bottom: 6px; }
   .card-header {
     padding: 14px 18px 8px;
-    display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
   }
-  .card-header h2 { font-size: 15px; font-weight: 600; margin: 0; }
-  .hint { font-size: 11px; color: var(--text-faint); }
+  .card-header h2 {
+    font-size: 15px; font-weight: 600; margin: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .mode-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 9px; border-radius: 7px;
+    background: var(--surface-2);
+    font-size: 11px; color: var(--text-muted);
+    flex-shrink: 0;
+    transition: background 0.2s, color 0.2s;
+  }
+  .mode-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--text-faint);
+    transition: background 0.2s;
+  }
+  .mode-pill.pan {
+    background: rgba(10, 132, 255, 0.12);
+    color: var(--accent);
+  }
+  .mode-pill.pan .mode-dot {
+    background: var(--accent);
+    box-shadow: 0 0 0 0 var(--accent);
+    animation: pulse-blue 1.5s infinite;
+  }
+  @keyframes pulse-blue {
+    0%   { box-shadow: 0 0 0 0 rgba(10, 132, 255, 0.5); }
+    70%  { box-shadow: 0 0 0 5px rgba(10, 132, 255, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(10, 132, 255, 0); }
+  }
 
   .chart-wrap {
     position: relative; height: 240px;
     margin: 0 4px 4px;
     -webkit-user-select: none; user-select: none;
-    touch-action: none;            /* critical for iOS — capture all touches */
+    touch-action: none;
   }
   .chart { width: 100%; height: 100%; display: block; pointer-events: none; }
   .chart-loading {
@@ -169,6 +210,18 @@
     pointer-events: none;
   }
   .chart-loading[hidden] { display: none !important; }
+  .chart-loading-older {
+    position: absolute; top: 50%; left: 8px;
+    transform: translateY(-50%);
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 10px; color: var(--text-muted);
+    z-index: 4; pointer-events: none;
+    box-shadow: 0 2px 6px var(--tooltip-shadow);
+  }
+  .chart-loading-older[hidden] { display: none !important; }
   .chart-tooltip {
     position: absolute; top: 6px;
     padding: 6px 10px;
@@ -181,7 +234,7 @@
     min-width: 110px; text-align: center;
   }
   .tt-date { color: var(--text-muted); font-size: 11px; line-height: 1.3; }
-  .tt-ratio { font-weight: 700; font-size: 15px; margin-top: 2px; font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .tt-value { font-weight: 700; font-size: 15px; margin-top: 2px; font-variant-numeric: tabular-nums; line-height: 1.2; }
 
   @media (max-width: 380px) {
     .chart-wrap { height: 200px; }
@@ -196,8 +249,15 @@
   }
   .stat-row:last-child { border-bottom: none; }
   .stat-row > span:first-child { color: var(--text-muted); }
-  .stat-row > span:last-child {
-    font-weight: 500; font-variant-numeric: tabular-nums;
+  .stat-row > span:last-child { font-weight: 500; font-variant-numeric: tabular-nums; }
+
+  .stat-range {
+    padding: 10px 18px 12px;
+    font-size: 11px;
+    color: var(--text-faint);
+    border-bottom: 0.5px solid var(--border);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
   }
 
   .refresh-row {
@@ -226,7 +286,6 @@
     .status.err { color: var(--loss); }
   }
 
-  /* Live auto-refresh indicator */
   .live-indicator {
     display: inline-flex; align-items: center; gap: 5px;
     font-size: 11px; color: var(--text-muted);
@@ -238,10 +297,7 @@
     box-shadow: 0 0 0 0 var(--live-dot);
     animation: pulse 2s infinite;
   }
-  .live-indicator.paused .live-dot {
-    background: var(--text-faint);
-    animation: none;
-  }
+  .live-indicator.paused .live-dot { background: var(--text-faint); animation: none; }
   @keyframes pulse {
     0%   { box-shadow: 0 0 0 0 rgba(48, 209, 88, 0.5); }
     70%  { box-shadow: 0 0 0 6px rgba(48, 209, 88, 0); }
@@ -256,14 +312,14 @@
 <div class="app">
   <header>
     <h1>ETH / BSV 비율</h1>
-    <div class="subtitle">실시간 환율 비교 · 지난 30일 추이</div>
+    <div class="subtitle">실시간 환율 비교 · 시간 단위 시세</div>
   </header>
 
   <div id="err-banner" class="err-banner" hidden>
-    <div class="err-title">⚠ 데이터 조회 오류</div>
+    <div class="err-title">⚠ 오류</div>
     <div id="err-msg" class="err-msg"></div>
     <details class="err-details">
-      <summary>상세 로그 (탭하여 펼치기)</summary>
+      <summary>상세 로그</summary>
       <pre id="err-log" class="err-log"></pre>
     </details>
   </div>
@@ -276,33 +332,42 @@
   </section>
 
   <section class="card">
-    <div class="price-row">
+    <div class="price-row" id="row-eth" data-coin="eth">
       <div class="coin">
         <span class="coin-symbol eth">ETH</span>
-        <span class="coin-name">Ethereum</span>
+        <span class="coin-name">Ethereum · 탭하여 차트 보기</span>
       </div>
-      <span class="price" id="eth-price">—</span>
+      <div class="price-right">
+        <span class="price" id="eth-price">—</span>
+        <span class="price-chevron">›</span>
+      </div>
     </div>
-    <div class="price-row">
+    <div class="price-row" id="row-bsv" data-coin="bsv">
       <div class="coin">
         <span class="coin-symbol bsv">BSV</span>
-        <span class="coin-name">Bitcoin SV</span>
+        <span class="coin-name">Bitcoin SV · 탭하여 차트 보기</span>
       </div>
-      <span class="price" id="bsv-price">—</span>
+      <div class="price-right">
+        <span class="price" id="bsv-price">—</span>
+        <span class="price-chevron">›</span>
+      </div>
     </div>
   </section>
 
   <section class="card chart-card">
     <div class="card-header">
-      <h2>지난 30일 추이</h2>
-      <div class="hint">차트를 터치 · 드래그하여 상세 보기</div>
+      <h2 id="chart-title">ETH / BSV 비율 추이</h2>
+      <span class="mode-pill" id="mode-pill">
+        <span class="mode-dot"></span>
+        <span id="mode-text">시점 확인</span>
+      </span>
     </div>
     <div class="chart-wrap" id="chart-wrap">
       <svg id="chart" class="chart" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="area-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#0a84ff" stop-opacity="0.22"/>
-            <stop offset="100%" stop-color="#0a84ff" stop-opacity="0"/>
+            <stop id="area-stop-0" offset="0%" stop-color="#0a84ff" stop-opacity="0.22"/>
+            <stop id="area-stop-1" offset="100%" stop-color="#0a84ff" stop-opacity="0"/>
           </linearGradient>
         </defs>
         <g id="grid"></g>
@@ -314,17 +379,19 @@
         <circle id="cursor-dot" r="5" fill="#0a84ff" stroke="#ffffff" stroke-width="2" opacity="0"/>
       </svg>
       <div class="chart-loading" id="chart-loading">차트 불러오는 중…</div>
+      <div class="chart-loading-older" id="chart-loading-older" hidden>이전 데이터 로딩…</div>
       <div class="chart-tooltip" id="tooltip" hidden>
         <div class="tt-date" id="tt-date"></div>
-        <div class="tt-ratio" id="tt-ratio"></div>
+        <div class="tt-value" id="tt-value"></div>
       </div>
     </div>
   </section>
 
   <section class="card">
-    <div class="stat-row"><span>30일 최저</span><span id="stat-min">—</span></div>
-    <div class="stat-row"><span>30일 최고</span><span id="stat-max">—</span></div>
-    <div class="stat-row"><span>30일 평균</span><span id="stat-avg">—</span></div>
+    <div class="stat-range" id="stat-range">—</div>
+    <div class="stat-row"><span id="stat-min-label">기간 최저</span><span id="stat-min">—</span></div>
+    <div class="stat-row"><span id="stat-max-label">기간 최고</span><span id="stat-max">—</span></div>
+    <div class="stat-row"><span id="stat-avg-label">기간 평균</span><span id="stat-avg">—</span></div>
   </section>
 
   <div class="refresh-row">
@@ -341,24 +408,22 @@
   </div>
 
   <div class="updated" id="updated"></div>
-  <div class="footer">데이터 출처: CryptoCompare (1차) · Binance + KuCoin (2차 대체)</div>
+  <div class="footer">데이터 출처: CryptoCompare · 좌우 드래그로 과거 데이터 자동 로딩</div>
 </div>
 
 <script>
-// Visible diagnostic logging
+// =====================================================================
+// Diagnostic logging
+// =====================================================================
 var debugLog = '';
 function dbg(msg) {
   var t = '';
   try { t = new Date().toISOString().substr(11, 12) + ' '; } catch (_) {}
   debugLog += t + msg + '\n';
-  // Keep log size bounded
   var lines = debugLog.split('\n');
   if (lines.length > 200) debugLog = lines.slice(-200).join('\n');
   try { console.log('[ETH/BSV]', msg); } catch (_) {}
-  try {
-    var el = document.getElementById('err-log');
-    if (el) el.textContent = debugLog;
-  } catch (_) {}
+  try { var el = document.getElementById('err-log'); if (el) el.textContent = debugLog; } catch (_) {}
 }
 function showError(msg) {
   try {
@@ -368,9 +433,7 @@ function showError(msg) {
     if (msgEl)  msgEl.textContent = msg;
   } catch (_) {}
 }
-function hideError() {
-  try { document.getElementById('err-banner').hidden = true; } catch (_) {}
-}
+function hideError() { try { document.getElementById('err-banner').hidden = true; } catch (_) {} }
 
 window.addEventListener('error', function (e) {
   dbg('WINDOW ERROR: ' + e.message + ' @ ' + (e.filename || '?') + ':' + (e.lineno || '?'));
@@ -381,19 +444,72 @@ window.addEventListener('unhandledrejection', function (e) {
   dbg('UNHANDLED REJECTION: ' + r);
 });
 
-dbg('Script loaded. UA = ' + (navigator.userAgent || '?').substr(0, 100));
+dbg('Script loaded.');
 
 (function () {
-  var REFRESH_INTERVAL_MS = 60 * 1000;   // 1 minute
-  var chartData = [];
+  // ===================================================================
+  // Config
+  // ===================================================================
+  var CC_BASE = 'https://min-api.cryptocompare.com/data';
+  var REFRESH_INTERVAL_MS = 60 * 1000;
+  var WINDOW_SIZE = 720;        // 720 hourly points = 30 days visible
+  var FETCH_OLDER_LIMIT = 720;  // fetch 30 more days when panning back
+  var PREFETCH_THRESHOLD = 80;  // when windowStart < this, prefetch older
+
+  // Coin colors
+  var COLORS = {
+    ratio: '#0a84ff',
+    eth:   '#627eea',
+    bsv:   '#eab300',
+  };
+  var COLOR_FILLS = {
+    ratio: 'rgba(10, 132, 255, 0.22)',
+    eth:   'rgba(98, 126, 234, 0.22)',
+    bsv:   'rgba(234, 179, 0, 0.22)',
+  };
+
+  // ===================================================================
+  // State
+  // ===================================================================
+  var state = {
+    // Unified data array: { time, date, eth, bsv, ratio }
+    data: [],
+    // Visible window into state.data
+    windowStart: 0,
+    windowEnd: 0,
+    // Pan accumulator (sub-pixel precision)
+    panAccum: 0,
+    // Chart and interaction mode
+    chartType: 'ratio',   // 'ratio' | 'eth' | 'bsv'
+    mode: 'scrub',        // 'scrub' | 'pan'
+    // Loading state
+    isLoadingOlder: false,
+    noMoreOlder: false,
+    // Last-known current prices
+    currentEth: null,
+    currentBsv: null,
+    currentRatio: null,
+  };
+
   var chartGeom = null;
   var refreshTimer = null;
-  var isFetching = false;
+  var isFetchingCurrent = false;
 
-  function $(sel) { return document.querySelector(sel); }
-
+  // ===================================================================
+  // Helpers
+  // ===================================================================
+  function $(s) { return document.querySelector(s); }
   function fmtKRW(n)   { return '₩ ' + Math.round(n).toLocaleString('ko-KR'); }
+  function fmtKRWAxis(n) {
+    if (!isFinite(n)) return '';
+    var v = Math.abs(n);
+    if (v >= 1e8) return (n / 1e8).toFixed(2) + '억';
+    if (v >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+    if (v >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+    return Math.round(n).toString();
+  }
   function fmtRatio(n) {
+    if (!isFinite(n)) return '—';
     if (n >= 100) return n.toFixed(2);
     if (n >= 10)  return n.toFixed(3);
     return n.toFixed(4);
@@ -402,11 +518,13 @@ dbg('Script loaded. UA = ' + (navigator.userAgent || '?').substr(0, 100));
   function formatDateShort(d) { return (d.getMonth() + 1) + '/' + d.getDate(); }
   function formatDateFull(d) {
     var dow = ['일','월','화','수','목','금','토'][d.getDay()];
+    var y = d.getFullYear();
+    var m = d.getMonth() + 1;
+    var dd = d.getDate();
     var h = String(d.getHours()).padStart(2, '0');
-    var m = String(d.getMinutes()).padStart(2, '0');
-    return (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + dow + ') ' + h + ':' + m;
+    var mn = String(d.getMinutes()).padStart(2, '0');
+    return y + '. ' + m + '. ' + dd + ' (' + dow + ') ' + h + ':' + mn;
   }
-
   function setStatus(text, kind) {
     var el = $('#status');
     if (!el) return;
@@ -414,179 +532,279 @@ dbg('Script loaded. UA = ' + (navigator.userAgent || '?').substr(0, 100));
     el.className = 'status' + (kind ? ' ' + kind : '');
   }
 
+  // ===================================================================
+  // Series accessors (based on chartType)
+  // ===================================================================
+  function getValueFor(point) {
+    if (state.chartType === 'ratio') return point.ratio;
+    if (state.chartType === 'eth')   return point.eth;
+    if (state.chartType === 'bsv')   return point.bsv;
+    return point.ratio;
+  }
+  function getCurrentForType() {
+    if (state.chartType === 'ratio') return state.currentRatio;
+    if (state.chartType === 'eth')   return state.currentEth;
+    if (state.chartType === 'bsv')   return state.currentBsv;
+    return null;
+  }
+  function getVisibleValues() {
+    var out = [];
+    for (var i = state.windowStart; i < state.windowEnd; i++) {
+      out.push({ date: state.data[i].date, value: getValueFor(state.data[i]) });
+    }
+    return out;
+  }
+  function fmtChartValue(v) {
+    return state.chartType === 'ratio' ? fmtRatio(v) : fmtKRWAxis(v);
+  }
+  function fmtChartValueFull(v) {
+    return state.chartType === 'ratio' ? fmtRatio(v) : fmtKRW(v);
+  }
+
+  // ===================================================================
+  // Fetch
+  // ===================================================================
   function loggedFetch(url, label) {
     dbg(label + ' → GET ' + url);
     return fetch(url).then(function (r) {
-      dbg(label + ' ← status ' + r.status);
+      dbg(label + ' ← ' + r.status);
       if (!r.ok) throw new Error(label + ' HTTP ' + r.status);
       return r.json();
-    }).then(function (j) {
-      dbg(label + ' ← OK');
-      return j;
     }).catch(function (e) {
       dbg(label + ' ✕ ' + (e.message || e));
       throw new Error(label + ': ' + (e.message || e));
     });
   }
 
-  // ---------- Data sources ----------
-  function fetchFromCryptoCompare() {
-    var CC = 'https://min-api.cryptocompare.com/data';
-    return Promise.all([
-      loggedFetch(CC + '/pricemultifull?fsyms=ETH,BSV&tsyms=KRW', 'CC:current'),
-      loggedFetch(CC + '/v2/histohour?fsym=ETH&tsym=KRW&limit=720', 'CC:eth-hist'),
-      loggedFetch(CC + '/v2/histohour?fsym=BSV&tsym=KRW&limit=720', 'CC:bsv-hist'),
-    ]).then(function (r) {
-      var cur = r[0], ethHist = r[1], bsvHist = r[2];
-      if (ethHist.Response === 'Error' || bsvHist.Response === 'Error') {
-        throw new Error('CC 히스토리 오류: ' + (ethHist.Message || bsvHist.Message));
-      }
-      var raw = cur.RAW;
-      if (!raw || !raw.ETH || !raw.ETH.KRW || !raw.BSV || !raw.BSV.KRW) {
-        throw new Error('CC: 가격 데이터 없음');
-      }
-      var ethP = raw.ETH.KRW.PRICE, bsvP = raw.BSV.KRW.PRICE;
-      if (!isFinite(ethP) || !isFinite(bsvP) || bsvP <= 0) {
-        throw new Error('CC: 유효하지 않은 가격');
-      }
-      var ea = (ethHist.Data && ethHist.Data.Data) || [];
-      var ba = (bsvHist.Data && bsvHist.Data.Data) || [];
-      var n = Math.min(ea.length, ba.length);
-      var series = [];
-      for (var i = 0; i < n; i++) {
-        var e = ea[i], b = ba[i];
-        if (e && b && e.close > 0 && b.close > 0) {
-          series.push({ date: new Date((e.time || b.time) * 1000), value: e.close / b.close });
-        }
-      }
-      if (series.length === 0) throw new Error('CC: 히스토리 비어있음');
-      return { ethPrice: ethP, bsvPrice: bsvP, ratio: ethP / bsvP, series: series };
-    });
-  }
-
-  function fetchFromBinanceKuCoin() {
-    var BINANCE = 'https://api.binance.com/api/v3';
-    var KUCOIN  = 'https://api.kucoin.com/api/v1';
-    var FX      = 'https://open.er-api.com/v6/latest/USD';
-    return Promise.all([
-      loggedFetch(BINANCE + '/ticker/price?symbol=ETHUSDT', 'BI:eth-now'),
-      loggedFetch(KUCOIN + '/market/stats?symbol=BSV-USDT', 'KC:bsv-now'),
-      loggedFetch(BINANCE + '/klines?symbol=ETHUSDT&interval=1h&limit=720', 'BI:eth-hist'),
-      loggedFetch(KUCOIN + '/market/candles?symbol=BSV-USDT&type=1hour', 'KC:bsv-hist'),
-      loggedFetch(FX, 'FX:usdkrw'),
-    ]).then(function (r) {
-      var krwRate = r[4] && r[4].rates && r[4].rates.KRW;
-      if (!krwRate) throw new Error('FX: USD->KRW 환율 없음');
-      var ethUsd = parseFloat(r[0].price);
-      var bsvUsd = parseFloat(r[1] && r[1].data && r[1].data.last);
-      if (!isFinite(ethUsd) || !isFinite(bsvUsd) || bsvUsd <= 0) {
-        throw new Error('2차: 현재가 파싱 실패');
-      }
-      var ea = (r[2] || []).map(function (k) { return { time: Math.floor(k[0]/1000), close: parseFloat(k[4]) }; });
-      var ba = ((r[3] && r[3].data) || []).map(function (c) { return { time: parseInt(c[0],10), close: parseFloat(c[2]) }; });
-      ea.sort(function(a,b){return a.time-b.time;});
-      ba.sort(function(a,b){return a.time-b.time;});
-      var bm = {}; ba.forEach(function(b){bm[b.time]=b.close;});
-      var series = [];
-      for (var i = 0; i < ea.length; i++) {
-        var e = ea[i], bc = bm[e.time];
-        if (bc == null) {
-          var nearest = null, best = 3601;
-          for (var j = 0; j < ba.length; j++) {
-            var dt = Math.abs(ba[j].time - e.time);
-            if (dt < best) { best = dt; nearest = ba[j]; }
-          }
-          if (nearest && best <= 3600) bc = nearest.close;
-        }
-        if (bc && bc > 0 && e.close > 0) {
-          series.push({ date: new Date(e.time * 1000), value: e.close / bc });
-        }
-      }
-      if (series.length === 0) throw new Error('2차: 정렬 실패');
-      return {
-        ethPrice: ethUsd * krwRate,
-        bsvPrice: bsvUsd * krwRate,
-        ratio: ethUsd / bsvUsd,
-        series: series,
-      };
-    });
-  }
-
-  // ---------- Main fetch ----------
-  function fetchAll(opts) {
-    opts = opts || {};
-    if (isFetching) {
-      dbg('Skipping fetch — already in progress');
-      return;
+  // Build aligned data from ETH and BSV histohour responses
+  function alignSeries(ethArr, bsvArr) {
+    var bsvMap = {};
+    for (var i = 0; i < bsvArr.length; i++) {
+      if (bsvArr[i] && typeof bsvArr[i].time === 'number') bsvMap[bsvArr[i].time] = bsvArr[i].close;
     }
-    isFetching = true;
-    if (opts.clearLog) { debugLog = ''; hideError(); }
-    dbg('--- fetchAll start (' + (opts.auto ? 'auto' : 'manual') + ') ---');
+    var out = [];
+    for (var j = 0; j < ethArr.length; j++) {
+      var e = ethArr[j];
+      if (!e || typeof e.time !== 'number') continue;
+      var b = bsvMap[e.time];
+      if (typeof b !== 'number' || b <= 0 || !(e.close > 0)) continue;
+      out.push({
+        time: e.time,
+        date: new Date(e.time * 1000),
+        eth: e.close,
+        bsv: b,
+        ratio: e.close / b,
+      });
+    }
+    out.sort(function (a, b) { return a.time - b.time; });
+    return out;
+  }
+
+  function fetchInitial() {
+    if (isFetchingCurrent) return Promise.resolve();
+    isFetchingCurrent = true;
     setStatus('데이터 가져오는 중…');
     var btn = $('#refresh');
     if (btn) btn.disabled = true;
 
-    fetchFromCryptoCompare().then(function (result) {
-      applyResult(result, 'CryptoCompare');
+    return Promise.all([
+      loggedFetch(CC_BASE + '/pricemultifull?fsyms=ETH,BSV&tsyms=KRW', 'CC:current'),
+      loggedFetch(CC_BASE + '/v2/histohour?fsym=ETH&tsym=KRW&limit=' + WINDOW_SIZE, 'CC:eth-hist'),
+      loggedFetch(CC_BASE + '/v2/histohour?fsym=BSV&tsym=KRW&limit=' + WINDOW_SIZE, 'CC:bsv-hist'),
+    ]).then(function (r) {
+      var cur = r[0], ethHist = r[1], bsvHist = r[2];
+      if (ethHist.Response === 'Error' || bsvHist.Response === 'Error') {
+        throw new Error('히스토리 오류: ' + (ethHist.Message || bsvHist.Message));
+      }
+      var raw = cur && cur.RAW;
+      if (!raw || !raw.ETH || !raw.ETH.KRW || !raw.BSV || !raw.BSV.KRW) {
+        throw new Error('가격 데이터 없음');
+      }
+      state.currentEth = raw.ETH.KRW.PRICE;
+      state.currentBsv = raw.BSV.KRW.PRICE;
+      if (!(state.currentBsv > 0)) throw new Error('BSV 가격 오류');
+      state.currentRatio = state.currentEth / state.currentBsv;
+
+      var aligned = alignSeries(
+        (ethHist.Data && ethHist.Data.Data) || [],
+        (bsvHist.Data && bsvHist.Data.Data) || []
+      );
+      if (aligned.length === 0) throw new Error('정렬된 히스토리 비어있음');
+
+      state.data = aligned;
+      state.windowEnd = state.data.length;
+      state.windowStart = Math.max(0, state.windowEnd - WINDOW_SIZE);
+      state.noMoreOlder = false;
+
+      renderAll();
       hideError();
-    }).catch(function (e1) {
-      dbg('Primary failed: ' + e1.message);
-      setStatus('1차 실패 — 2차 시도 중', 'warn');
-      return fetchFromBinanceKuCoin().then(function (result) {
-        applyResult(result, 'Binance + KuCoin');
-        hideError();
-      }).catch(function (e2) {
-        dbg('Secondary also failed: ' + e2.message);
-        throw new Error('1차: ' + e1.message + ' / 2차: ' + e2.message);
-      });
+      setStatus('완료', 'ok');
+      $('#updated').textContent = '마지막 업데이트: ' + new Date().toLocaleString('ko-KR');
     }).catch(function (e) {
-      dbg('!!! ' + (e.message || e));
-      setStatus('데이터 조회 실패', 'err');
+      dbg('!!! initial fetch failed: ' + e.message);
+      setStatus('조회 실패', 'err');
       showError(e.message || String(e));
     }).then(function () {
       if (btn) btn.disabled = false;
-      isFetching = false;
+      isFetchingCurrent = false;
     });
   }
 
-  function applyResult(result, sourceName) {
-    updateHero(result.ratio, result.series);
-    updatePrices(result.ethPrice, result.bsvPrice);
-    updateStats(result.series);
-    renderChart(result.series);
-    setStatus('완료 (' + sourceName + ')', 'ok');
-    try { $('#updated').textContent = '마지막 업데이트: ' + new Date().toLocaleString('ko-KR'); } catch (_) {}
+  function fetchCurrentOnly() {
+    if (isFetchingCurrent) return;
+    isFetchingCurrent = true;
+    loggedFetch(CC_BASE + '/pricemultifull?fsyms=ETH,BSV&tsyms=KRW', 'CC:refresh')
+      .then(function (cur) {
+        var raw = cur && cur.RAW;
+        if (!raw || !raw.ETH || !raw.ETH.KRW || !raw.BSV || !raw.BSV.KRW) {
+          throw new Error('가격 데이터 없음');
+        }
+        state.currentEth = raw.ETH.KRW.PRICE;
+        state.currentBsv = raw.BSV.KRW.PRICE;
+        if (!(state.currentBsv > 0)) throw new Error('BSV 가격 오류');
+        state.currentRatio = state.currentEth / state.currentBsv;
+        // Append the latest hourly point if newer than what we have
+        renderHero();
+        renderPrices();
+        $('#updated').textContent = '마지막 업데이트: ' + new Date().toLocaleString('ko-KR');
+        setStatus('완료', 'ok');
+      })
+      .catch(function (e) {
+        dbg('refresh failed: ' + e.message);
+        setStatus('갱신 실패', 'warn');
+      })
+      .then(function () { isFetchingCurrent = false; });
   }
 
-  function updateHero(ratio, data) {
-    $('#current-ratio').textContent = fmtRatio(ratio);
-    $('#ratio-text').textContent    = fmtRatio(ratio);
+  function fetchOlder() {
+    if (state.isLoadingOlder || state.noMoreOlder || state.data.length === 0) return;
+    state.isLoadingOlder = true;
+    $('#chart-loading-older').hidden = false;
+
+    var oldestSec = state.data[0].time;
+    var toTs = Math.floor(oldestSec) - 1;
+
+    dbg('fetchOlder: toTs=' + toTs + ', oldest=' + new Date(oldestSec*1000).toISOString());
+
+    Promise.all([
+      loggedFetch(CC_BASE + '/v2/histohour?fsym=ETH&tsym=KRW&limit=' + FETCH_OLDER_LIMIT + '&toTs=' + toTs, 'CC:eth-older'),
+      loggedFetch(CC_BASE + '/v2/histohour?fsym=BSV&tsym=KRW&limit=' + FETCH_OLDER_LIMIT + '&toTs=' + toTs, 'CC:bsv-older'),
+    ]).then(function (r) {
+      var ea = (r[0] && r[0].Data && r[0].Data.Data) || [];
+      var ba = (r[1] && r[1].Data && r[1].Data.Data) || [];
+      var older = alignSeries(ea, ba);
+
+      // Filter to ensure no overlap with existing data
+      var existingTimes = {};
+      for (var i = 0; i < state.data.length; i++) existingTimes[state.data[i].time] = true;
+      var filtered = [];
+      for (var j = 0; j < older.length; j++) {
+        if (!existingTimes[older[j].time]) filtered.push(older[j]);
+      }
+
+      if (filtered.length === 0) {
+        dbg('No more older data available.');
+        state.noMoreOlder = true;
+      } else {
+        dbg('Prepending ' + filtered.length + ' older points.');
+        state.data = filtered.concat(state.data);
+        // Preserve visual window position
+        state.windowStart += filtered.length;
+        state.windowEnd   += filtered.length;
+        renderChart();
+        renderStats();
+      }
+    }).catch(function (e) {
+      dbg('fetchOlder failed: ' + e.message);
+    }).then(function () {
+      state.isLoadingOlder = false;
+      $('#chart-loading-older').hidden = true;
+    });
+  }
+
+  // ===================================================================
+  // Render
+  // ===================================================================
+  function renderAll() {
+    renderHero();
+    renderPrices();
+    renderChartStyling();
+    renderChart();
+    renderStats();
+    renderChartTitle();
+    renderPriceRowActiveState();
+    updateModeIndicator();
+  }
+
+  function renderHero() {
+    $('#current-ratio').textContent = fmtRatio(state.currentRatio);
+    $('#ratio-text').textContent    = fmtRatio(state.currentRatio);
     var ch = $('#ratio-change');
-    if (data.length > 25) {
-      var now = data[data.length - 1].value;
-      var past = data[data.length - 1 - 24].value;
+    var n = state.data.length;
+    if (n > 25) {
+      var nowVal = state.data[n - 1].ratio;
+      var past   = state.data[n - 1 - 24].ratio;
       if (past > 0) {
-        var pct = (now - past) / past * 100;
+        var pct = (nowVal - past) / past * 100;
         ch.textContent = fmtPct(pct) + ' (24h)';
         ch.className = 'hero-change ' + (pct > 0.005 ? 'pos' : pct < -0.005 ? 'neg' : '');
       } else { ch.textContent = '—'; ch.className = 'hero-change'; }
     } else { ch.textContent = '—'; ch.className = 'hero-change'; }
   }
-  function updatePrices(eth, bsv) {
-    $('#eth-price').textContent = fmtKRW(eth);
-    $('#bsv-price').textContent = fmtKRW(bsv);
+
+  function renderPrices() {
+    $('#eth-price').textContent = state.currentEth != null ? fmtKRW(state.currentEth) : '—';
+    $('#bsv-price').textContent = state.currentBsv != null ? fmtKRW(state.currentBsv) : '—';
   }
-  function updateStats(data) {
-    var vals = data.map(function (d) { return d.value; });
+
+  function renderChartTitle() {
+    var t = state.chartType === 'eth' ? 'Ethereum 가격 추이'
+          : state.chartType === 'bsv' ? 'Bitcoin SV 가격 추이'
+          : 'ETH / BSV 비율 추이';
+    $('#chart-title').textContent = t;
+    var lab = state.chartType === 'eth' ? 'ETH 가격'
+            : state.chartType === 'bsv' ? 'BSV 가격'
+            : '비율';
+    $('#stat-min-label').textContent = '기간 최저 ' + lab;
+    $('#stat-max-label').textContent = '기간 최고 ' + lab;
+    $('#stat-avg-label').textContent = '기간 평균 ' + lab;
+  }
+
+  function renderPriceRowActiveState() {
+    var rEth = $('#row-eth'), rBsv = $('#row-bsv');
+    rEth.classList.toggle('active', state.chartType === 'eth');
+    rBsv.classList.toggle('active', state.chartType === 'bsv');
+  }
+
+  function renderChartStyling() {
+    var c = COLORS[state.chartType] || COLORS.ratio;
+    $('#line-path').setAttribute('stroke', c);
+    $('#cursor-dot').setAttribute('fill', c);
+    $('#area-stop-0').setAttribute('stop-color', c);
+    $('#area-stop-1').setAttribute('stop-color', c);
+  }
+
+  function renderStats() {
+    if (state.data.length === 0) return;
+    var visible = getVisibleValues();
+    if (visible.length === 0) return;
+
+    var vals = visible.map(function (d) { return d.value; });
     var mn = Math.min.apply(null, vals);
     var mx = Math.max.apply(null, vals);
     var sum = 0; for (var i = 0; i < vals.length; i++) sum += vals[i];
-    $('#stat-min').textContent = fmtRatio(mn);
-    $('#stat-max').textContent = fmtRatio(mx);
-    $('#stat-avg').textContent = fmtRatio(sum / vals.length);
+    var avg = sum / vals.length;
+
+    $('#stat-min').textContent = fmtChartValueFull(mn);
+    $('#stat-max').textContent = fmtChartValueFull(mx);
+    $('#stat-avg').textContent = fmtChartValueFull(avg);
+
+    var first = visible[0].date, last = visible[visible.length - 1].date;
+    var fy = first.getFullYear(), ly = last.getFullYear();
+    var yearStr = (fy === ly) ? fy : (fy + '~' + ly);
+    $('#stat-range').textContent = yearStr + ' · ' + formatDateShort(first) + ' — ' + formatDateShort(last);
   }
 
-  // ---------- Chart ----------
   function svgEl(tag, attrs) {
     var el = document.createElementNS('http://www.w3.org/2000/svg', tag);
     if (attrs) for (var k in attrs) el.setAttribute(k, attrs[k]);
@@ -594,13 +812,16 @@ dbg('Script loaded. UA = ' + (navigator.userAgent || '?').substr(0, 100));
   }
   function clearGroup(el) { while (el.firstChild) el.removeChild(el.firstChild); }
 
-  function renderChart(data) {
-    chartData = data;
+  function renderChart() {
+    if (state.data.length === 0) return;
+    var visible = getVisibleValues();
+    if (visible.length === 0) return;
+
     var svg = $('#chart');
     var wrap = $('#chart-wrap');
     var width = Math.max(280, wrap.clientWidth);
     var height = wrap.clientHeight || 240;
-    var padding = { top: 18, right: 14, bottom: 24, left: 48 };
+    var padding = { top: 18, right: 14, bottom: 24, left: 56 };
     var plotW = width - padding.left - padding.right;
     var plotH = height - padding.top - padding.bottom;
 
@@ -608,25 +829,25 @@ dbg('Script loaded. UA = ' + (navigator.userAgent || '?').substr(0, 100));
     svg.setAttribute('height', height);
     svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
 
-    var vals = data.map(function (d) { return d.value; });
+    var vals = visible.map(function (d) { return d.value; });
     var minV = Math.min.apply(null, vals);
     var maxV = Math.max.apply(null, vals);
     var span = (maxV - minV) || (Math.abs(maxV) * 0.01) || 1;
     var yMin = minV - span * 0.06;
     var yMax = maxV + span * 0.06;
     var yRange = yMax - yMin;
-    var n = data.length;
+    var n = visible.length;
     var xAt = function (i) { return padding.left + (n > 1 ? (i / (n - 1)) * plotW : 0); };
     var yAt = function (v) { return padding.top + (1 - (v - yMin) / yRange) * plotH; };
-    chartGeom = { width: width, height: height, padding: padding, plotW: plotW, plotH: plotH, xAt: xAt, yAt: yAt };
+    chartGeom = { width: width, height: height, padding: padding, plotW: plotW, plotH: plotH, xAt: xAt, yAt: yAt, n: n };
 
     var line = '';
-    for (var i = 0; i < n; i++) line += (i === 0 ? 'M' : 'L') + xAt(i).toFixed(2) + ',' + yAt(data[i].value).toFixed(2);
+    for (var i = 0; i < n; i++) line += (i === 0 ? 'M' : 'L') + xAt(i).toFixed(2) + ',' + yAt(visible[i].value).toFixed(2);
     $('#line-path').setAttribute('d', line);
 
     var baseY = padding.top + plotH;
     var area = 'M' + xAt(0).toFixed(2) + ',' + baseY.toFixed(2);
-    for (var j = 0; j < n; j++) area += ' L' + xAt(j).toFixed(2) + ',' + yAt(data[j].value).toFixed(2);
+    for (var j = 0; j < n; j++) area += ' L' + xAt(j).toFixed(2) + ',' + yAt(visible[j].value).toFixed(2);
     area += ' L' + xAt(n - 1).toFixed(2) + ',' + baseY.toFixed(2) + ' Z';
     $('#area-path').setAttribute('d', area);
 
@@ -635,9 +856,9 @@ dbg('Script loaded. UA = ' + (navigator.userAgent || '?').substr(0, 100));
     for (var k = 0; k <= 4; k++) {
       var v = yMin + (yRange * k / 4);
       var y = yAt(v);
-      grid.appendChild(svgEl('line', { x1: padding.left, x2: width - padding.right, y1: y, y2: y, stroke: 'rgba(128,128,128,0.25)', 'stroke-width': '0.5' }));
-      var label = svgEl('text', { x: padding.left - 8, y: y + 4, 'text-anchor': 'end', 'font-size': '11', fill: '#8e8e93', 'font-family': 'inherit' });
-      label.textContent = fmtRatio(v);
+      grid.appendChild(svgEl('line', { x1: padding.left, x2: width - padding.right, y1: y, y2: y, stroke: 'rgba(128,128,128,0.22)', 'stroke-width': '0.5' }));
+      var label = svgEl('text', { x: padding.left - 8, y: y + 4, 'text-anchor': 'end', 'font-size': '10.5', fill: '#8e8e93', 'font-family': 'inherit' });
+      label.textContent = fmtChartValue(v);
       yLabels.appendChild(label);
     }
 
@@ -646,9 +867,14 @@ dbg('Script loaded. UA = ' + (navigator.userAgent || '?').substr(0, 100));
     var indices = [0, Math.floor((n - 1) / 2), n - 1];
     var anchors = ['start', 'middle', 'end'];
     indices.forEach(function (idx, jj) {
-      var d = data[idx];
-      var t = svgEl('text', { x: xAt(idx), y: height - 6, 'text-anchor': anchors[jj], 'font-size': '11', fill: '#8e8e93', 'font-family': 'inherit' });
-      t.textContent = formatDateShort(d.date);
+      var d = visible[idx].date;
+      var t = svgEl('text', { x: xAt(idx), y: height - 6, 'text-anchor': anchors[jj], 'font-size': '10.5', fill: '#8e8e93', 'font-family': 'inherit' });
+      // Show year if different from current
+      var now = new Date();
+      var label = (d.getFullYear() !== now.getFullYear())
+        ? (d.getFullYear() + '/' + (d.getMonth()+1) + '/' + d.getDate())
+        : ((d.getMonth()+1) + '/' + d.getDate());
+      t.textContent = label;
       xLabels.appendChild(t);
     });
 
@@ -656,11 +882,13 @@ dbg('Script loaded. UA = ' + (navigator.userAgent || '?').substr(0, 100));
     hideCursor();
   }
 
-  function showCursorAt(idx) {
-    if (!chartGeom || !chartData[idx]) return;
+  function showCursorAt(localIdx) {
+    if (!chartGeom) return;
+    var visible = getVisibleValues();
+    if (!visible[localIdx]) return;
     var p = chartGeom.padding;
-    var d = chartData[idx];
-    var x = chartGeom.xAt(idx);
+    var d = visible[localIdx];
+    var x = chartGeom.xAt(localIdx);
     var y = chartGeom.yAt(d.value);
     var line = $('#cursor-line');
     line.setAttribute('x1', x); line.setAttribute('x2', x);
@@ -671,7 +899,7 @@ dbg('Script loaded. UA = ' + (navigator.userAgent || '?').substr(0, 100));
     dot.setAttribute('opacity', '1');
     var tooltip = $('#tooltip');
     $('#tt-date').textContent  = formatDateFull(d.date);
-    $('#tt-ratio').textContent = fmtRatio(d.value);
+    $('#tt-value').textContent = fmtChartValueFull(d.value);
     tooltip.hidden = false;
     var svg = $('#chart');
     var rendered = svg.getBoundingClientRect().width || chartGeom.width;
@@ -687,14 +915,56 @@ dbg('Script loaded. UA = ' + (navigator.userAgent || '?').substr(0, 100));
     $('#cursor-dot').setAttribute('opacity', '0');
     $('#tooltip').hidden = true;
   }
+  function isCursorVisible() {
+    return !$('#tooltip').hidden;
+  }
 
-  // ---------- Chart interaction (touch + mouse on the wrapper div, not the SVG) ----------
+  // ===================================================================
+  // Mode indicator
+  // ===================================================================
+  function updateModeIndicator() {
+    var pill = $('#mode-pill');
+    var txt  = $('#mode-text');
+    if (state.mode === 'pan') {
+      pill.classList.add('pan');
+      txt.textContent = '이동 모드 (드래그)';
+    } else {
+      pill.classList.remove('pan');
+      txt.textContent = '시점 확인 (탭하여 이동 모드)';
+    }
+  }
+
+  function setMode(m) {
+    if (state.mode === m) return;
+    state.mode = m;
+    updateModeIndicator();
+    if (m === 'pan') hideCursor();
+  }
+
+  function setChartType(t) {
+    if (state.chartType === t) return;
+    state.chartType = t;
+    hideCursor();  // value changes, old tooltip stale
+    renderChartTitle();
+    renderPriceRowActiveState();
+    renderChartStyling();
+    renderChart();
+    renderStats();
+  }
+
+  // ===================================================================
+  // Chart interaction (touch + mouse on the wrapper div)
+  // ===================================================================
   function setupChartInteraction() {
     var wrap = $('#chart-wrap');
     if (!wrap) return;
 
-    function handleAtClientX(clientX) {
-      if (!chartGeom || chartData.length === 0) return;
+    var startX = null, startY = null, startTime = 0;
+    var didDrag = false, lastX = null;
+    var showedInStart = false;
+
+    function clientXToLocalIdx(clientX) {
+      if (!chartGeom) return -1;
       var svg = $('#chart');
       var rect = svg.getBoundingClientRect();
       var rendered = rect.width || chartGeom.width;
@@ -702,11 +972,67 @@ dbg('Script loaded. UA = ' + (navigator.userAgent || '?').substr(0, 100));
       var xInSvg = (clientX - rect.left) * scale;
       var r = (xInSvg - chartGeom.padding.left) / chartGeom.plotW;
       r = Math.max(0, Math.min(1, r));
-      var idx = Math.round(r * (chartData.length - 1));
-      showCursorAt(idx);
+      return Math.round(r * (chartGeom.n - 1));
     }
 
-    // Detect passive support
+    function handleStart(clientX, clientY) {
+      startX = clientX; startY = clientY;
+      startTime = Date.now();
+      didDrag = false; lastX = clientX;
+      showedInStart = false;
+
+      if (state.mode === 'scrub') {
+        // First-tap behavior: if cursor not visible, show immediately for responsiveness
+        if (!isCursorVisible()) {
+          showCursorAt(clientXToLocalIdx(clientX));
+          showedInStart = true;
+        }
+        // else: tooltip already visible, wait to see if this is a tap (toggle) or drag (update)
+      }
+      // Pan mode: do nothing yet
+    }
+
+    function handleMove(clientX, clientY) {
+      if (startX === null) return;
+      var totalDx = Math.abs(clientX - startX);
+      var totalDy = Math.abs(clientY - startY);
+      if (!didDrag && (totalDx > 8 || totalDy > 8)) {
+        didDrag = true;
+        showedInStart = false; // a drag, not a tap-show
+      }
+      if (didDrag) {
+        if (state.mode === 'scrub') {
+          showCursorAt(clientXToLocalIdx(clientX));
+        } else {
+          // pan mode
+          var dx = clientX - lastX;
+          lastX = clientX;
+          applyPan(dx);
+        }
+      }
+    }
+
+    function handleEnd() {
+      var dur = Date.now() - startTime;
+      if (!didDrag && dur < 600) {
+        // Tap
+        if (state.mode === 'scrub') {
+          if (showedInStart) {
+            // First tap that revealed tooltip — keep it, stay in scrub
+            // (no action needed; cursor already shown)
+          } else {
+            // Tooltip was already visible before this tap → toggle to pan
+            setMode('pan');
+          }
+        } else {
+          // pan mode → switch back to scrub and show cursor at tap point
+          setMode('scrub');
+          showCursorAt(clientXToLocalIdx(startX));
+        }
+      }
+      startX = null;
+    }
+
     var passiveOpts = false;
     try {
       var probe = Object.defineProperty({}, 'passive', { get: function () { passiveOpts = true; return false; } });
@@ -715,90 +1041,155 @@ dbg('Script loaded. UA = ' + (navigator.userAgent || '?').substr(0, 100));
     } catch (_) {}
     var touchOpts = passiveOpts ? { passive: false } : false;
 
-    // TOUCH events — iPhone Safari
     wrap.addEventListener('touchstart', function (e) {
       if (e.touches.length > 0) {
         try { e.preventDefault(); } catch (_) {}
-        handleAtClientX(e.touches[0].clientX);
+        handleStart(e.touches[0].clientX, e.touches[0].clientY);
       }
     }, touchOpts);
-
     wrap.addEventListener('touchmove', function (e) {
       if (e.touches.length > 0) {
         try { e.preventDefault(); } catch (_) {}
-        handleAtClientX(e.touches[0].clientX);
+        handleMove(e.touches[0].clientX, e.touches[0].clientY);
       }
     }, touchOpts);
+    wrap.addEventListener('touchend',    function () { handleEnd(); });
+    wrap.addEventListener('touchcancel', function () { handleEnd(); });
 
-    // MOUSE events — desktop
-    wrap.addEventListener('mousedown', function (e) { handleAtClientX(e.clientX); });
-    wrap.addEventListener('mousemove', function (e) { handleAtClientX(e.clientX); });
-    wrap.addEventListener('mouseleave', function () { hideCursor(); });
+    wrap.addEventListener('mousedown', function (e) { handleStart(e.clientX, e.clientY); });
+    wrap.addEventListener('mousemove', function (e) {
+      if (startX !== null) handleMove(e.clientX, e.clientY);
+    });
+    wrap.addEventListener('mouseup',   function () { handleEnd(); });
+    wrap.addEventListener('mouseleave', function () {
+      if (state.mode === 'scrub' && startX === null) {
+        // Hide on hover-leave (desktop)
+        // But only if not in middle of interaction
+      }
+      handleEnd();
+    });
   }
 
-  // ---------- Auto-refresh ----------
+  // ===================================================================
+  // Pan
+  // ===================================================================
+  var panRAF = null;
+  function applyPan(deltaPx) {
+    if (state.data.length === 0 || !chartGeom) return;
+    var windowW = state.windowEnd - state.windowStart;
+    if (windowW <= 0) return;
+    var indicesPerPx = windowW / chartGeom.plotW;
+    state.panAccum += deltaPx * indicesPerPx;
+
+    if (!panRAF) {
+      panRAF = requestAnimationFrame(function () {
+        panRAF = null;
+        var shift = Math.trunc(state.panAccum);
+        if (shift === 0) return;
+        state.panAccum -= shift;
+        applyPanShift(shift);
+      });
+    }
+  }
+
+  function applyPanShift(shift) {
+    // shift > 0 => drag right => show older data => decrease indices
+    var newStart = state.windowStart - shift;
+    var newEnd   = state.windowEnd - shift;
+
+    // Clamp newer edge
+    if (newEnd > state.data.length) {
+      var over = newEnd - state.data.length;
+      newEnd -= over;
+      newStart -= over;
+      state.panAccum = 0;
+    }
+    // Clamp older edge
+    if (newStart < 0) {
+      newEnd += (-newStart);
+      newStart = 0;
+      state.panAccum = 0;
+    }
+
+    state.windowStart = newStart;
+    state.windowEnd   = newEnd;
+    renderChart();
+    renderStats();
+
+    // Prefetch older data when approaching the left edge
+    if (state.windowStart < PREFETCH_THRESHOLD && !state.isLoadingOlder && !state.noMoreOlder) {
+      fetchOlder();
+    }
+  }
+
+  // ===================================================================
+  // Coin row taps
+  // ===================================================================
+  function setupCoinRowTaps() {
+    function bind(rowId, coin) {
+      var row = document.getElementById(rowId);
+      if (!row) return;
+      row.addEventListener('click', function () {
+        if (state.chartType === coin) {
+          setChartType('ratio');
+        } else {
+          setChartType(coin);
+        }
+      });
+    }
+    bind('row-eth', 'eth');
+    bind('row-bsv', 'bsv');
+  }
+
+  // ===================================================================
+  // Auto-refresh
+  // ===================================================================
   function startAutoRefresh() {
     stopAutoRefresh();
     refreshTimer = setInterval(function () {
       if (document.hidden) return;
-      fetchAll({ auto: true });
+      fetchCurrentOnly();
     }, REFRESH_INTERVAL_MS);
     setLiveIndicator(true);
-    dbg('Auto-refresh started (1 min)');
   }
   function stopAutoRefresh() {
-    if (refreshTimer) {
-      clearInterval(refreshTimer);
-      refreshTimer = null;
-      dbg('Auto-refresh stopped');
-    }
+    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
     setLiveIndicator(false);
   }
   function setLiveIndicator(active) {
     var el = document.getElementById('live-indicator');
     var txt = document.getElementById('live-text');
     if (!el || !txt) return;
-    if (active) {
-      el.classList.remove('paused');
-      txt.textContent = '1분마다 자동 갱신 중';
-    } else {
-      el.classList.add('paused');
-      txt.textContent = '자동 갱신 일시중지';
-    }
+    if (active) { el.classList.remove('paused'); txt.textContent = '1분마다 자동 갱신 중'; }
+    else        { el.classList.add('paused');    txt.textContent = '자동 갱신 일시중지'; }
   }
-
-  // When tab/app becomes visible again, refresh immediately
   document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) {
-      dbg('Page visible — immediate refresh');
-      fetchAll({ auto: true });
-      startAutoRefresh();
-    } else {
-      dbg('Page hidden');
-      setLiveIndicator(false);
-    }
+    if (!document.hidden) { fetchCurrentOnly(); startAutoRefresh(); }
+    else { setLiveIndicator(false); }
   });
 
-  // Resize / orientation
+  // Resize
   var resizeTimer = null;
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(function () { if (chartData.length > 0) renderChart(chartData); }, 120);
+    resizeTimer = setTimeout(function () { if (state.data.length > 0) renderChart(); }, 120);
   });
   window.addEventListener('orientationchange', function () {
-    setTimeout(function () { if (chartData.length > 0) renderChart(chartData); }, 200);
+    setTimeout(function () { if (state.data.length > 0) renderChart(); }, 200);
   });
 
-  // ---------- Init ----------
+  // ===================================================================
+  // Init
+  // ===================================================================
   function init() {
     dbg('init() called');
     try {
-      $('#refresh').addEventListener('click', function () { fetchAll({ clearLog: true }); });
+      $('#refresh').addEventListener('click', function () { debugLog = ''; hideError(); fetchInitial(); });
     } catch (e) { dbg('refresh bind failed: ' + e.message); }
-    try { setupChartInteraction(); dbg('Chart interaction set up.'); }
-    catch (e) { dbg('setupChartInteraction failed: ' + e.message); }
-    fetchAll({ clearLog: true });
-    startAutoRefresh();
+    try { setupChartInteraction(); } catch (e) { dbg('setupChartInteraction failed: ' + e.message); }
+    try { setupCoinRowTaps(); } catch (e) { dbg('setupCoinRowTaps failed: ' + e.message); }
+    updateModeIndicator();
+    fetchInitial().then(function () { startAutoRefresh(); });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
