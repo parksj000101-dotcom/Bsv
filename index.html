@@ -7,6 +7,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="ETH/BSV">
 <meta name="format-detection" content="telephone=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>ETH / BSV 비율</title>
 <style>
   :root {
@@ -420,7 +423,7 @@
   </div>
 
   <div class="updated" id="updated"></div>
-  <div class="footer">데이터 출처: CryptoCompare · 두 손가락으로 줌인/줌아웃 (최대 1년)</div>
+  <div class="footer">데이터 출처: CryptoCompare · Binance/KuCoin · CoinGecko (3중 대체) · v6</div>
 </div>
 
 <script>
@@ -457,6 +460,8 @@ window.addEventListener('unhandledrejection', function (e) {
 });
 
 dbg('Script loaded.');
+var APP_VERSION = 'v6-2025-10-31-fallback-cg';
+dbg('App version: ' + APP_VERSION);
 
 (function () {
   // ===================================================================
@@ -641,13 +646,52 @@ dbg('Script loaded.');
     return out;
   }
 
-  function fetchInitial() {
-    if (isFetchingCurrent) return Promise.resolve();
-    isFetchingCurrent = true;
-    setStatus('데이터 가져오는 중…');
-    var btn = $('#refresh');
-    if (btn) btn.disabled = true;
+  // ========== Binance + KuCoin fallback (1차 CC 실패 시 2차) ==========
+  function fetchKrwRate() {
+    return loggedFetch('https://open.er-api.com/v6/latest/USD', 'FX:usdkrw')
+      .then(function (r) {
+        var rate = r && r.rates && r.rates.KRW;
+        if (!rate || rate <= 0) throw new Error('FX: USD->KRW 환율 없음');
+        return rate;
+      });
+  }
+  function fetchBKCurrent() {
+    return Promise.all([
+      loggedFetch('https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT', 'BI:eth-now'),
+      loggedFetch('https://api.kucoin.com/api/v1/market/stats?symbol=BSV-USDT', 'KC:bsv-now'),
+      fetchKrwRate()
+    ]).then(function (r) {
+      var ethUsd = parseFloat(r[0].price);
+      var bsvUsd = parseFloat(r[1] && r[1].data && r[1].data.last);
+      var krw = r[2];
+      if (!isFinite(ethUsd) || !isFinite(bsvUsd) || bsvUsd <= 0) {
+        throw new Error('BK: 현재가 파싱 실패');
+      }
+      return { ethKrw: ethUsd * krw, bsvKrw: bsvUsd * krw, krwRate: krw };
+    });
+  }
+  function fetchBKHistory(krwRate, toSec) {
+    var url1 = 'https://api.binance.com/api/v3/klines?symbol=ETHUSDT&interval=1h&limit=1000';
+    if (toSec) url1 += '&endTime=' + (toSec * 1000);
+    var url2 = 'https://api.kucoin.com/api/v1/market/candles?symbol=BSV-USDT&type=1hour';
+    if (toSec) url2 += '&endAt=' + toSec;
+    return Promise.all([
+      loggedFetch(url1, 'BI:eth-hist'),
+      loggedFetch(url2, 'KC:bsv-hist'),
+    ]).then(function (r) {
+      var ea = (r[0] || []).map(function (k) {
+        return { time: Math.floor(k[0]/1000), close: parseFloat(k[4]) * krwRate };
+      });
+      var ba = ((r[1] && r[1].data) || []).map(function (c) {
+        return { time: parseInt(c[0], 10), close: parseFloat(c[2]) * krwRate };
+      });
+      ea.sort(function(a,b){return a.time-b.time;});
+      ba.sort(function(a,b){return a.time-b.time;});
+      return alignSeries(ea, ba);
+    });
+  }
 
+  function fetchInitialFromCC() {
     return Promise.all([
       loggedFetch(CC_BASE + '/pricemultifull?fsyms=ETH,BSV&tsyms=KRW', 'CC:current'),
       loggedFetch(CC_BASE + '/v2/histohour?fsym=ETH&tsym=KRW&limit=' + WINDOW_SIZE, 'CC:eth-hist'),
@@ -655,54 +699,127 @@ dbg('Script loaded.');
     ]).then(function (r) {
       var cur = r[0], ethHist = r[1], bsvHist = r[2];
       if (ethHist.Response === 'Error' || bsvHist.Response === 'Error') {
-        throw new Error('히스토리 오류: ' + (ethHist.Message || bsvHist.Message));
+        throw new Error('CC 히스토리: ' + (ethHist.Message || bsvHist.Message));
       }
       var raw = cur && cur.RAW;
       if (!raw || !raw.ETH || !raw.ETH.KRW || !raw.BSV || !raw.BSV.KRW) {
-        throw new Error('가격 데이터 없음');
+        throw new Error('CC: 가격 데이터 없음');
       }
-      state.currentEth = raw.ETH.KRW.PRICE;
-      state.currentBsv = raw.BSV.KRW.PRICE;
-      if (!(state.currentBsv > 0)) throw new Error('BSV 가격 오류');
-      state.currentRatio = state.currentEth / state.currentBsv;
-
       var aligned = alignSeries(
         (ethHist.Data && ethHist.Data.Data) || [],
         (bsvHist.Data && bsvHist.Data.Data) || []
       );
-      if (aligned.length === 0) throw new Error('정렬된 히스토리 비어있음');
-
-      state.data = aligned;
-      state.windowEnd = state.data.length;
-      state.windowStart = Math.max(0, state.windowEnd - WINDOW_SIZE);
-      state.targetWindowSize = state.windowEnd - state.windowStart;
-      state.noMoreOlder = false;
-
-      renderAll();
-      hideError();
-      setStatus('완료', 'ok');
-      $('#updated').textContent = '마지막 업데이트: ' + new Date().toLocaleString('ko-KR');
-    }).catch(function (e) {
-      dbg('!!! initial fetch failed: ' + e.message);
-      setStatus('조회 실패', 'err');
-      showError(e.message || String(e));
-    }).then(function () {
-      if (btn) btn.disabled = false;
-      isFetchingCurrent = false;
+      if (aligned.length === 0) throw new Error('CC: 정렬된 히스토리 비어있음');
+      return { source: 'CryptoCompare', ethKrw: raw.ETH.KRW.PRICE, bsvKrw: raw.BSV.KRW.PRICE, aligned: aligned };
     });
+  }
+  function fetchInitialFromBK() {
+    return fetchBKCurrent().then(function (cur) {
+      return fetchBKHistory(cur.krwRate).then(function (aligned) {
+        if (aligned.length === 0) throw new Error('BK: 정렬된 히스토리 비어있음');
+        return { source: 'Binance + KuCoin', ethKrw: cur.ethKrw, bsvKrw: cur.bsvKrw, aligned: aligned };
+      });
+    });
+  }
+
+  // ========== CoinGecko (3차 대체) ==========
+  function fetchCGCurrent() {
+    return loggedFetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum,bitcoin-cash-sv&vs_currencies=krw', 'CG:current')
+      .then(function (r) {
+        var eth = r && r.ethereum && r.ethereum.krw;
+        var bsv = r && r['bitcoin-cash-sv'] && r['bitcoin-cash-sv'].krw;
+        if (!isFinite(eth) || !isFinite(bsv) || bsv <= 0) {
+          throw new Error('CG: 가격 데이터 없음 (id 확인 필요)');
+        }
+        return { ethKrw: eth, bsvKrw: bsv };
+      });
+  }
+  function fetchInitialFromCG() {
+    return Promise.all([
+      fetchCGCurrent(),
+      loggedFetch('https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=krw&days=30', 'CG:eth-hist'),
+      loggedFetch('https://api.coingecko.com/api/v3/coins/bitcoin-cash-sv/market_chart?vs_currency=krw&days=30', 'CG:bsv-hist'),
+    ]).then(function (r) {
+      var cur = r[0];
+      var ep = (r[1] && r[1].prices) || [];
+      var bp = (r[2] && r[2].prices) || [];
+      var ea = ep.map(function (p) { return { time: Math.round(p[0]/1000/3600) * 3600, close: p[1] }; });
+      var ba = bp.map(function (p) { return { time: Math.round(p[0]/1000/3600) * 3600, close: p[1] }; });
+      var aligned = alignSeries(ea, ba);
+      if (aligned.length === 0) throw new Error('CG: 정렬된 히스토리 비어있음');
+      return { source: 'CoinGecko', ethKrw: cur.ethKrw, bsvKrw: cur.bsvKrw, aligned: aligned };
+    });
+  }
+
+  function fetchInitial() {
+    if (isFetchingCurrent) return Promise.resolve();
+    isFetchingCurrent = true;
+    setStatus('데이터 가져오는 중…');
+    var btn = $('#refresh');
+    if (btn) btn.disabled = true;
+
+    return fetchInitialFromCC()
+      .catch(function (e1) {
+        dbg('CC initial failed: ' + e1.message + ' — trying BK');
+        setStatus('1차 실패 — 2차 시도 중', 'warn');
+        return fetchInitialFromBK();
+      })
+      .catch(function (e2) {
+        dbg('BK initial failed: ' + e2.message + ' — trying CG');
+        setStatus('2차 실패 — 3차 시도 중', 'warn');
+        return fetchInitialFromCG();
+      })
+      .then(function (result) {
+        if (!(result.bsvKrw > 0)) throw new Error('BSV 가격 오류');
+        state.currentEth = result.ethKrw;
+        state.currentBsv = result.bsvKrw;
+        state.currentRatio = result.ethKrw / result.bsvKrw;
+        state.data = result.aligned;
+        state.windowEnd = state.data.length;
+        state.windowStart = Math.max(0, state.windowEnd - WINDOW_SIZE);
+        state.targetWindowSize = state.windowEnd - state.windowStart;
+        state.noMoreOlder = false;
+        renderAll();
+        hideError();
+        setStatus('완료 (' + result.source + ')', 'ok');
+        $('#updated').textContent = '마지막 업데이트: ' + new Date().toLocaleString('ko-KR');
+      })
+      .catch(function (e) {
+        dbg('!!! both initial fetches failed: ' + e.message);
+        setStatus('조회 실패', 'err');
+        showError('1차/2차 모두 실패: ' + (e.message || e));
+      })
+      .then(function () {
+        if (btn) btn.disabled = false;
+        isFetchingCurrent = false;
+      });
   }
 
   function fetchCurrentOnly() {
     if (isFetchingCurrent) return;
     isFetchingCurrent = true;
-    loggedFetch(CC_BASE + '/pricemultifull?fsyms=ETH,BSV&tsyms=KRW', 'CC:refresh')
-      .then(function (cur) {
-        var raw = cur && cur.RAW;
-        if (!raw || !raw.ETH || !raw.ETH.KRW || !raw.BSV || !raw.BSV.KRW) throw new Error('가격 데이터 없음');
-        state.currentEth = raw.ETH.KRW.PRICE;
-        state.currentBsv = raw.BSV.KRW.PRICE;
-        if (!(state.currentBsv > 0)) throw new Error('BSV 가격 오류');
-        state.currentRatio = state.currentEth / state.currentBsv;
+    var tryCC = function () {
+      return loggedFetch(CC_BASE + '/pricemultifull?fsyms=ETH,BSV&tsyms=KRW', 'CC:refresh')
+        .then(function (cur) {
+          var raw = cur && cur.RAW;
+          if (!raw || !raw.ETH || !raw.ETH.KRW || !raw.BSV || !raw.BSV.KRW) throw new Error('CC: 가격 데이터 없음');
+          return { ethKrw: raw.ETH.KRW.PRICE, bsvKrw: raw.BSV.KRW.PRICE };
+        });
+    };
+    tryCC()
+      .catch(function (e1) {
+        dbg('CC refresh failed: ' + e1.message + ' — trying BK');
+        return fetchBKCurrent().then(function (cur) { return { ethKrw: cur.ethKrw, bsvKrw: cur.bsvKrw }; });
+      })
+      .catch(function (e2) {
+        dbg('BK refresh failed: ' + e2.message + ' — trying CG');
+        return fetchCGCurrent();
+      })
+      .then(function (p) {
+        if (!(p.bsvKrw > 0)) throw new Error('BSV 가격 오류');
+        state.currentEth = p.ethKrw;
+        state.currentBsv = p.bsvKrw;
+        state.currentRatio = p.ethKrw / p.bsvKrw;
         renderHero();
         renderPrices();
         $('#updated').textContent = '마지막 업데이트: ' + new Date().toLocaleString('ko-KR');
@@ -721,14 +838,26 @@ dbg('Script loaded.');
     var toTs = Math.floor(oldestSec) - 1;
     dbg('fetchOlder: toTs=' + toTs);
 
-    Promise.all([
-      loggedFetch(CC_BASE + '/v2/histohour?fsym=ETH&tsym=KRW&limit=' + FETCH_OLDER_LIMIT + '&toTs=' + toTs, 'CC:eth-older'),
-      loggedFetch(CC_BASE + '/v2/histohour?fsym=BSV&tsym=KRW&limit=' + FETCH_OLDER_LIMIT + '&toTs=' + toTs, 'CC:bsv-older'),
-    ]).then(function (r) {
-      var ea = (r[0] && r[0].Data && r[0].Data.Data) || [];
-      var ba = (r[1] && r[1].Data && r[1].Data.Data) || [];
-      var older = alignSeries(ea, ba);
+    var tryCC = function () {
+      return Promise.all([
+        loggedFetch(CC_BASE + '/v2/histohour?fsym=ETH&tsym=KRW&limit=' + FETCH_OLDER_LIMIT + '&toTs=' + toTs, 'CC:eth-older'),
+        loggedFetch(CC_BASE + '/v2/histohour?fsym=BSV&tsym=KRW&limit=' + FETCH_OLDER_LIMIT + '&toTs=' + toTs, 'CC:bsv-older'),
+      ]).then(function (r) {
+        var ea = (r[0] && r[0].Data && r[0].Data.Data) || [];
+        var ba = (r[1] && r[1].Data && r[1].Data.Data) || [];
+        return alignSeries(ea, ba);
+      });
+    };
+    var tryBK = function () {
+      return fetchKrwRate().then(function (krw) { return fetchBKHistory(krw, toTs); });
+    };
 
+    tryCC()
+      .catch(function (e1) {
+        dbg('CC older failed: ' + e1.message + ' — trying BK');
+        return tryBK();
+      })
+      .then(function (older) {
       var existingTimes = {};
       for (var i = 0; i < state.data.length; i++) existingTimes[state.data[i].time] = true;
       var filtered = [];
@@ -1307,6 +1436,29 @@ dbg('Script loaded.');
   // ===================================================================
   function init() {
     dbg('init() called');
+    dbg('UA: ' + (navigator.userAgent || '?').substr(0, 80));
+    dbg('Origin: ' + window.location.origin);
+    dbg('Protocol: ' + window.location.protocol);
+    dbg('Href: ' + (window.location.href || '?').substr(0, 120));
+
+    // Origin check — fetches to external APIs only work from http(s) origins.
+    // file://, about:, or other non-network origins (Mail/Notes/Files previews)
+    // will cause every fetch to fail in <50ms with "Failed to fetch".
+    var proto = window.location.protocol;
+    if (proto !== 'https:' && proto !== 'http:') {
+      dbg('!! BAD ORIGIN: ' + proto + ' — all cross-origin fetches will fail');
+      setStatus('잘못된 위치에서 열림', 'err');
+      showError(
+        '이 페이지가 잘못된 위치에서 열렸습니다 (현재: ' + proto + ' ' +
+        (window.location.origin || '') + '). ' +
+        'iPhone Safari에서 GitHub Pages 주소 (https://parksj000101-dotcom.github.io/... 로 시작) 로 직접 열어야 합니다. ' +
+        '메일/메시지/파일/노트의 미리보기에서 열면 보안상 모든 API 호출이 즉시 차단됩니다.'
+      );
+      // Still bind the refresh button so user can retry after navigating to correct URL
+      try { $('#refresh').addEventListener('click', function () { location.reload(); }); } catch (_) {}
+      return;
+    }
+
     try {
       $('#refresh').addEventListener('click', function () { debugLog = ''; hideError(); fetchInitial(); });
     } catch (e) { dbg('refresh bind failed: ' + e.message); }
